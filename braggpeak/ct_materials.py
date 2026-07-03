@@ -113,6 +113,26 @@ class CTProfile:
         return np.cumsum(self.rsp * self.dz_cm)
 
 
+def synthetic_head_slabs():
+    """Patient-like head geometry as material slabs (scalp/skull/brain/...).
+
+    Mirrors :func:`synthetic_head_profile` but as discrete
+    :class:`~braggpeak.transport.Slab` layers, so the same geometry can be
+    transported by the SDE model and the Geant4 reference for a matched
+    patient-like comparison.
+    """
+    from .transport import Slab
+
+    return [
+        Slab(SOFT_TISSUE, 0.5),    # scalp
+        Slab(CORTICAL_BONE, 0.8),  # skull
+        Slab(WATER, 7.0),          # brain (~water)
+        Slab(CORTICAL_BONE, 0.8),  # far skull
+        Slab(SOFT_TISSUE, 1.0),    # soft tissue
+        Slab(WATER, 8.0),          # backing to catch the peak
+    ]
+
+
 def synthetic_head_profile(dz_cm: float = 0.02) -> CTProfile:
     """A patient-like 1-D CT profile through a head: skin/bone/brain/bone.
 

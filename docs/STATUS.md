@@ -64,7 +64,8 @@ Current column is vs the **Geant4** reference where available, else the analytic
 | Water R80/R90 range error | ≤ 0.7 mm | ≤ 0.42 mm vs Geant4 (0.03 mm at 150/200) | **met** |
 | Heterogeneous range vs **Geant4** (water-bone-water) | ≤ 1.0 mm | +1.0 mm peak, +0.73 mm R80 | **met** |
 | Heterogeneous range vs analytic WEPL (bone/lung) | ≤ 1.0 mm | +0.20 mm peak, +0.36 mm R80 | **met** |
-| Patient-like (CT head) range error | ≤ 1.0 mm | +0.20 mm peak, +0.32 mm R80 | **met** |
+| Patient-like head vs **Geant4** | ≤ 1.0 mm | +0.50 mm peak, +0.66 mm R80, γ3/3 100% | **met** |
+| Patient-like (CT head) range vs analytic WEPL | ≤ 1.0 mm | +0.20 mm peak, +0.32 mm R80 | **met** |
 | Water depth-dose RMSE | ≤ 1.5 % | 2.0–3.0 % vs Geant4 | close (met ~1.9% at 150) |
 | Gamma 3%/3mm | ≥ 90 % | 99–100 % (100/150), 83 % (200) | met at 100/150 |
 | Gamma 2%/2mm (water) | ≥ 95 % | 74–98 % (steep-edge limited) | gap at high E |
