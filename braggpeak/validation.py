@@ -80,12 +80,23 @@ def compare_curves(
     ref_m = compute_bragg_metrics(z_ref_cm, dose_ref)
     cand_m = compute_bragg_metrics(z_cand_cm, dose_cand)
 
-    dose_cand_on_ref = _resample_to(z_ref_cm, z_cand_cm, dose_cand)
-    rmse = normalized_rmse(dose_ref, dose_cand_on_ref, low_dose_threshold=low_dose_threshold)
-    mae = normalized_mae(dose_ref, dose_cand_on_ref, low_dose_threshold=low_dose_threshold)
-    g22, _ = gamma_index_1d(z_ref_cm, dose_ref, z_cand_cm, dose_cand,
+    # Depth-dose shape comparison is scale-invariant: normalise each curve to its
+    # own peak (100 % at the Bragg peak) so candidate and reference on different
+    # absolute dose scales (e.g. Geant4 per-primary vs analytic per-unit-area)
+    # are compared by shape, as clinical depth-dose validation does.
+    ref_peak = float(dose_ref.max())
+    cand_peak = float(dose_cand.max())
+    if ref_peak <= 0 or cand_peak <= 0:
+        raise ValueError("Both curves must have a positive peak dose.")
+    dose_ref_n = dose_ref / ref_peak
+    dose_cand_n = dose_cand / cand_peak
+
+    dose_cand_on_ref = _resample_to(z_ref_cm, z_cand_cm, dose_cand_n)
+    rmse = normalized_rmse(dose_ref_n, dose_cand_on_ref, low_dose_threshold=low_dose_threshold)
+    mae = normalized_mae(dose_ref_n, dose_cand_on_ref, low_dose_threshold=low_dose_threshold)
+    g22, _ = gamma_index_1d(z_ref_cm, dose_ref_n, z_cand_cm, dose_cand_n,
                             dose_tol_pct=2.0, dta_mm=2.0)
-    g33, _ = gamma_index_1d(z_ref_cm, dose_ref, z_cand_cm, dose_cand,
+    g33, _ = gamma_index_1d(z_ref_cm, dose_ref_n, z_cand_cm, dose_cand_n,
                             dose_tol_pct=3.0, dta_mm=3.0)
 
     return Comparison(
@@ -174,6 +185,31 @@ def wepl_reference(
     _, dose_w = nist_anchored_reference(energy_mev, wepl, energy_spread_pct=energy_spread_pct)
     dose_phys = dose_w * rsp  # dose per physical cm scales with local RSP
     return z_cm, dose_phys
+
+
+def ct_wepl_reference(
+    energy_mev: float,
+    hu: NDArray[np.float64],
+    dz_cm: float,
+    *,
+    scale: float = 1.0,
+    energy_spread_pct: float = 0.8,
+) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+    """WEPL reference for a 1-D CT profile using the HU -> RSP calibration.
+
+    Same construction as :func:`wepl_reference` but the per-voxel RSP comes from
+    the CT calibration rather than a slab material, so it shares the transport's
+    basis and the Bragg peak lands where accumulated WEPL equals the water range.
+    """
+    from .ct_materials import hu_to_rsp
+
+    hu = np.asarray(hu, dtype=np.float64)
+    n = hu.size
+    z_cm = (np.arange(n) + 0.5) * dz_cm
+    rsp = hu_to_rsp(hu)
+    wepl = np.cumsum(rsp * dz_cm)
+    _, dose_w = nist_anchored_reference(energy_mev, wepl, energy_spread_pct=energy_spread_pct)
+    return z_cm, dose_w * rsp
 
 
 @dataclass

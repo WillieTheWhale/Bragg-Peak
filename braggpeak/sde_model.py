@@ -178,6 +178,102 @@ def simulate_depth_dose_sde(
     )
 
 
+def simulate_depth_dose_ct(
+    energy_mev: float,
+    hu: NDArray[np.float64],
+    dz_cm: float,
+    *,
+    n_histories: int = 40000,
+    energy_spread_pct: float = 0.8,
+    e_cut_mev: float = 1.0,
+    seed: int = 0,
+    nuclear_removal: bool = True,
+    nuclear_mu_per_cm: float = 0.010,
+    nuclear_local_fraction: float = 0.6,
+    stopping_scale: float = 1.0,
+) -> DepthDose:
+    """SDE transport through a 1-D CT profile using the HU -> RSP calibration.
+
+    Each voxel's linear stopping power is the water stopping power scaled by the
+    voxel's relative stopping power ``RSP(HU)``; densities come from the HU ->
+    density calibration. This is the RSP-based analytic transport standard in
+    proton dose calculation, and it shares the WEPL reference basis so the range
+    comparison isolates transport/straggling error from material assignment.
+    """
+    from .ct_materials import hu_to_rsp, hu_to_density
+    from .units import PROTON_MASS_MEV
+
+    if energy_mev <= e_cut_mev:
+        raise ValueError("Initial energy must exceed the cut energy.")
+    hu = np.asarray(hu, dtype=np.float64)
+    n = hu.size
+    z_cm = (np.arange(n) + 0.5) * dz_cm
+    rsp = hu_to_rsp(hu)
+    density = np.maximum(hu_to_density(hu), 1e-4)
+    water_model = BetheStoppingPower(WATER, stopping_scale=stopping_scale)
+    za_water = WATER.z_over_a
+
+    rng = np.random.default_rng(seed)
+    edep = np.zeros(n)
+    alive_count = np.zeros(n)
+    lin_stop_accum = np.zeros(n)
+    mu_nuc = nuclear_mu_per_cm if nuclear_removal else 0.0
+
+    sigma_e0 = energy_spread_pct / 100.0 * energy_mev
+    e_hist = np.maximum(rng.normal(energy_mev, sigma_e0, size=n_histories), e_cut_mev + 1e-6)
+    alive = np.ones(n_histories, dtype=bool)
+
+    for i in range(n):
+        if not np.any(alive):
+            break
+        e_active = e_hist[alive]
+        s_water = water_model.linear_stopping_power(e_active)  # MeV/cm in water
+        s_lin = s_water * rsp[i]  # scaled to the voxel medium
+        gamma = 1.0 + e_active / PROTON_MASS_MEV
+        beta2 = 1.0 - 1.0 / (gamma * gamma)
+        omega2 = _straggling_variance_per_cm(za_water, density[i], beta2)
+        loss = rng.normal(s_lin * dz_cm, np.sqrt(np.maximum(omega2 * dz_cm, 0.0)))
+        loss = np.clip(loss, 0.0, e_active)
+
+        idx_alive = np.where(alive)[0]
+        np.add.at(edep, i, loss.sum())
+        alive_count[i] += e_active.size
+        lin_stop_accum[i] += s_lin.sum()
+        e_hist[idx_alive] = e_active - loss
+
+        if mu_nuc > 0:
+            p_remove = 1.0 - np.exp(-mu_nuc * density[i] * dz_cm)
+            removed = rng.random(idx_alive.size) < p_remove
+            if np.any(removed):
+                rem = idx_alive[removed]
+                np.add.at(edep, i, (nuclear_local_fraction * e_hist[rem]).sum())
+                alive[rem] = False
+        stopped = e_hist[idx_alive] <= e_cut_mev
+        alive[idx_alive[stopped]] = False
+
+    dose = edep / (density * dz_cm * n_histories)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        mean_slin = np.where(alive_count > 0, lin_stop_accum / np.maximum(alive_count, 1), 0.0)
+    metadata = {
+        "model": "sde_ct",
+        "initial_energy_mev": energy_mev,
+        "dz_cm": dz_cm,
+        "n_histories": n_histories,
+        "energy_spread_pct": energy_spread_pct,
+        "e_cut_mev": e_cut_mev,
+        "seed": seed,
+        "stopping_scale": stopping_scale,
+        "n_voxels": n,
+        "hu_min": float(hu.min()),
+        "hu_max": float(hu.max()),
+        "units": {"z": "cm", "dose": "MeV/g", "energy": "MeV", "let": "keV/um"},
+    }
+    return DepthDose(
+        z_cm=z_cm, dose=dose, dose_ideal=dose.copy(), energy_mev=np.zeros(n),
+        lin_stopping=mean_slin, let_kev_um=mean_slin * 0.1, metadata=metadata,
+    )
+
+
 def dose_uncertainty(
     energy_mev: float,
     slabs: Sequence[Slab],
