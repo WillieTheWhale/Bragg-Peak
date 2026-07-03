@@ -111,3 +111,20 @@ def fit_stopping_scale(
 def calibrated_stopping_factory(scale: float):
     """Return a ``material -> BetheStoppingPower`` factory with a fixed scale."""
     return lambda m: BetheStoppingPower(m, stopping_scale=scale)
+
+
+def relative_stopping_power(
+    material: Material,
+    *,
+    energy_mev: float = 100.0,
+    scale: float = 1.0,
+) -> float:
+    """Relative (to water) linear stopping power of ``material`` -- the RSP.
+
+    RSP = (rho_mat S_mass_mat) / (rho_water S_mass_water), evaluated at a
+    representative proton energy. This is the water-equivalent thickness per
+    unit physical thickness used to compute WEPL for heterogeneous geometry.
+    """
+    s_mat = BetheStoppingPower(material, stopping_scale=scale).linear_stopping_power(energy_mev)[0]
+    s_water = BetheStoppingPower(WATER, stopping_scale=scale).linear_stopping_power(energy_mev)[0]
+    return float(s_mat / s_water)

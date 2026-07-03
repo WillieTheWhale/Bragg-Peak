@@ -140,6 +140,42 @@ def nist_anchored_reference(
     return z_cm, curve2.dose
 
 
+def wepl_reference(
+    energy_mev: float,
+    slabs,
+    z_cm: NDArray[np.float64],
+    *,
+    scale: float = 1.0,
+    energy_spread_pct: float = 0.8,
+) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+    """Water-equivalent-path-length reference for heterogeneous slab geometry.
+
+    Maps each physical depth to its water-equivalent depth using per-material
+    relative stopping power (RSP), evaluates the NIST-anchored water Bragg curve
+    at that water-equivalent depth, and weights by the local RSP so dose is
+    expressed per physical cm. The Bragg peak therefore lands at the physical
+    depth where the accumulated WEPL equals the water range -- the analytic
+    prediction heterogeneous transport must reproduce.
+    """
+    from .calibrate import relative_stopping_power
+    from .transport import _build_depth_grid
+
+    z_cm = np.asarray(z_cm, dtype=np.float64)
+    dz = float(z_cm[1] - z_cm[0]) if z_cm.size > 1 else 0.01
+    _, mat_idx = _build_depth_grid(slabs, dz)
+    mat_idx = mat_idx[: z_cm.size] if mat_idx.size >= z_cm.size else np.pad(
+        mat_idx, (0, z_cm.size - mat_idx.size), mode="edge"
+    )
+    rsp_per_slab = [relative_stopping_power(s.material, energy_mev=energy_mev, scale=scale)
+                    for s in slabs]
+    rsp = np.array([rsp_per_slab[i] for i in mat_idx])
+    wepl = np.cumsum(rsp * dz)  # water-equivalent depth at each voxel
+
+    _, dose_w = nist_anchored_reference(energy_mev, wepl, energy_spread_pct=energy_spread_pct)
+    dose_phys = dose_w * rsp  # dose per physical cm scales with local RSP
+    return z_cm, dose_phys
+
+
 @dataclass
 class CaseResult:
     """One candidate-vs-reference case with performance and provenance."""

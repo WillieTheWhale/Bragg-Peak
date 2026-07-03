@@ -1,0 +1,23 @@
+# Heterogeneous water-bone-water slab, 150 MeV proton pencil beam.
+# The 2 cm cortical-bone slab (RSP ~1.70) pulls the Bragg peak ~1.4 cm shallower
+# than pure water. Reference: WEPL-mapped NIST-anchored Bortfeld curve.
+name: heterogeneous_bone_150mev
+seed: 20260703
+output_dir: experiments/output
+
+beam:
+  energy_mev: 150.0
+  energy_spread_pct: 0.8
+  fluence0: 1.0
+
+slabs:
+  - material: liquid_water
+    thickness_cm: 5.0
+  - material: icru_cortical_bone
+    thickness_cm: 2.0
+  - material: liquid_water
+    thickness_cm: 15.0
+
+numerics:
+  dz_cm: 0.02
+  e_cut_mev: 1.0
