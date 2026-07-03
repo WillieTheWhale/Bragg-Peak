@@ -330,6 +330,11 @@ def _render_markdown(report: BenchmarkReport) -> str:
         "",
         f"## Result: {'PASS' if report.passed else 'FAIL'}",
         "",
+        "> Shape metrics (RMSE, gamma) here are against the **Bortfeld analytic**"
+        " reference, whose plateau-to-peak ratio is conservative; the"
+        " `gate-benchmark` (vs Geant4) is authoritative for dose shape. Range"
+        " metrics below are reliable against either reference.",
+        "",
     ]
     if report.violations:
         lines.append("Threshold violations:")

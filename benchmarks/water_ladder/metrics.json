@@ -58,13 +58,13 @@
       "rmse_pct": 1.5,
       "gamma_2pct_2mm": 0.95
     },
-    "wall_time_s": 8.352507709001657
+    "wall_time_s": 8.209394667006563
   },
   "baseline": [
     {
       "name": "baseline_sde_80MeV",
-      "runtime_s": 0.2606838750070892,
-      "peak_memory_mb": 5.588735,
+      "runtime_s": 0.2548116249963641,
+      "peak_memory_mb": 5.588823,
       "metadata": {
         "model": "sde_monte_carlo",
         "initial_energy_mev": 80.0,
@@ -110,7 +110,7 @@
     },
     {
       "name": "baseline_sde_100MeV",
-      "runtime_s": 0.38062720804009587,
+      "runtime_s": 0.3658476669806987,
       "peak_memory_mb": 5.584131,
       "metadata": {
         "model": "sde_monte_carlo",
@@ -157,7 +157,7 @@
     },
     {
       "name": "baseline_sde_150MeV",
-      "runtime_s": 0.7611629579914734,
+      "runtime_s": 0.7461544580291957,
       "peak_memory_mb": 5.604227,
       "metadata": {
         "model": "sde_monte_carlo",
@@ -204,7 +204,7 @@
     },
     {
       "name": "baseline_sde_200MeV",
-      "runtime_s": 1.2145839169970714,
+      "runtime_s": 1.1889677500003017,
       "peak_memory_mb": 5.629867,
       "metadata": {
         "model": "sde_monte_carlo",
@@ -251,7 +251,7 @@
     },
     {
       "name": "baseline_sde_230MeV",
-      "runtime_s": 1.5128334580222145,
+      "runtime_s": 1.4779372089542449,
       "peak_memory_mb": 5.647403,
       "metadata": {
         "model": "sde_monte_carlo",
@@ -300,7 +300,7 @@
   "calibrated": [
     {
       "name": "calibrated_sde_80MeV",
-      "runtime_s": 0.25689670897554606,
+      "runtime_s": 0.2527599580353126,
       "peak_memory_mb": 5.577779,
       "metadata": {
         "model": "sde_monte_carlo",
@@ -347,7 +347,7 @@
     },
     {
       "name": "calibrated_sde_100MeV",
-      "runtime_s": 0.38010395801393315,
+      "runtime_s": 0.37297804199624807,
       "peak_memory_mb": 5.584163,
       "metadata": {
         "model": "sde_monte_carlo",
@@ -394,7 +394,7 @@
     },
     {
       "name": "calibrated_sde_150MeV",
-      "runtime_s": 0.754979417019058,
+      "runtime_s": 0.746371665969491,
       "peak_memory_mb": 5.604259,
       "metadata": {
         "model": "sde_monte_carlo",
@@ -441,7 +441,7 @@
     },
     {
       "name": "calibrated_sde_200MeV",
-      "runtime_s": 1.205880583031103,
+      "runtime_s": 1.1993130409973674,
       "peak_memory_mb": 5.629715,
       "metadata": {
         "model": "sde_monte_carlo",
@@ -488,7 +488,7 @@
     },
     {
       "name": "calibrated_sde_230MeV",
-      "runtime_s": 1.5065062079811469,
+      "runtime_s": 1.488367207988631,
       "peak_memory_mb": 5.647251,
       "metadata": {
         "model": "sde_monte_carlo",
