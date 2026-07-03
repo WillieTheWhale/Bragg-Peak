@@ -50,14 +50,19 @@ def simulate_depth_dose_sde(
     e_cut_mev: float = 1.0,
     seed: int = 0,
     nuclear_removal: bool = True,
+    nuclear_mu_per_cm: float = 0.010,
+    nuclear_local_fraction: float = 0.6,
     stopping_model_factory=None,
 ) -> DepthDose:
     """Monte Carlo SDE transport of a monoenergetic pencil beam.
 
     Parameters mirror :func:`braggpeak.transport.simulate_depth_dose` where they
     overlap. ``n_histories`` protons are transported; ``nuclear_removal`` applies
-    an approximate proton-loss probability (~1%/cm in water) that lowers the
-    Bragg peak relative to entrance, as observed experimentally.
+    a proton-loss probability of ``nuclear_mu_per_cm`` per cm (density-scaled)
+    that lowers the Bragg peak relative to entrance. A fraction
+    ``nuclear_local_fraction`` of a removed proton's residual energy is
+    deposited locally, approximating short-range charged secondaries from
+    nonelastic nuclear interactions, which raises the plateau dose.
 
     Returns a :class:`~braggpeak.transport.DepthDose` on the same voxel grid as
     the deterministic model, so both feed the identical scorer.
@@ -81,8 +86,8 @@ def simulate_depth_dose_sde(
     alive_count = np.zeros(n)  # protons entering each voxel (for LET averaging)
     lin_stop_accum = np.zeros(n)
 
-    # Nuclear inelastic removal: ~0.01 /cm in water, scaled by density.
-    nuclear_mu_per_cm = 0.0100 if nuclear_removal else 0.0
+    # Nuclear inelastic removal rate (per cm in water, density-scaled below).
+    mu_nuc = nuclear_mu_per_cm if nuclear_removal else 0.0
 
     # Initial energies with Gaussian spread.
     sigma_e0 = energy_spread_pct / 100.0 * energy_mev
@@ -117,11 +122,16 @@ def simulate_depth_dose_sde(
 
         e_hist[idx_alive] = e_active - loss
 
-        # Nuclear removal this step.
-        if nuclear_mu_per_cm > 0:
-            p_remove = 1.0 - np.exp(-nuclear_mu_per_cm * rho * dz_cm)
+        # Nuclear removal this step. A removed proton deposits a fraction of its
+        # residual energy locally (charged secondaries) and is then dropped.
+        if mu_nuc > 0:
+            p_remove = 1.0 - np.exp(-mu_nuc * rho * dz_cm)
             removed = rng.random(idx_alive.size) < p_remove
-            alive[idx_alive[removed]] = False
+            if np.any(removed):
+                rem_idx = idx_alive[removed]
+                local = nuclear_local_fraction * e_hist[rem_idx]
+                np.add.at(edep, i, local.sum())
+                alive[rem_idx] = False
 
         # Stop protons below the cut.
         stopped = e_hist[idx_alive] <= e_cut_mev
@@ -146,6 +156,8 @@ def simulate_depth_dose_sde(
         "e_cut_mev": e_cut_mev,
         "seed": seed,
         "nuclear_removal": nuclear_removal,
+        "nuclear_mu_per_cm": nuclear_mu_per_cm,
+        "nuclear_local_fraction": nuclear_local_fraction,
         "slabs": [
             {"material": s.material.name, "thickness_cm": s.thickness_cm,
              "density_g_cm3": s.material.density_g_cm3, "i_value_ev": s.material.i_value_ev}

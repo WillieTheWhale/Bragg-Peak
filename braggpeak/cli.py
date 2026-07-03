@@ -85,6 +85,27 @@ def cmd_metrics(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_benchmark(args: argparse.Namespace) -> int:
+    from .benchmark import run_benchmark
+
+    report = run_benchmark(
+        out_dir=args.out,
+        model=args.model,
+        dz_cm=args.dz,
+    )
+    print(f"Benchmark ({args.model}) written to {args.out}")
+    print(f"  fitted stopping-scale: {report.scale:.5f}")
+    print(f"  success-criteria: {'PASS' if report.passed else 'FAIL (see report)'}")
+    for v in report.violations:
+        print(f"    unmet: {v}")
+    print(f"  regression gate: {'PASS' if report.regression_ok else 'FAIL'}")
+    for v in report.regression_msgs or []:
+        print(f"    {v}")
+    # CI gates on regression against the committed baseline, not on the
+    # aspirational success criteria (those are reported for visibility).
+    return 0 if report.regression_ok else 1
+
+
 def cmd_version(_args: argparse.Namespace) -> int:
     print(__version__)
     return 0
@@ -103,6 +124,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_metrics = sub.add_parser("metrics", help="Print metrics for a saved depth-dose CSV.")
     p_metrics.add_argument("csv", help="Depth-dose CSV (depth_cm,dose,...).")
     p_metrics.set_defaults(func=cmd_metrics)
+
+    p_bench = sub.add_parser("benchmark", help="Run the water-ladder calibrate/compare loop.")
+    p_bench.add_argument("--out", default="benchmarks/water_ladder", help="Output directory.")
+    p_bench.add_argument("--model", default="sde", choices=["sde", "csda"], help="Candidate model.")
+    p_bench.add_argument("--dz", type=float, default=0.02, help="Voxel size (cm).")
+    p_bench.set_defaults(func=cmd_benchmark)
 
     p_ver = sub.add_parser("version", help="Print version.")
     p_ver.set_defaults(func=cmd_version)

@@ -69,10 +69,17 @@ class BetheStoppingPower:
         Medium whose ``z_over_a``, ``i_value_ev`` and ``density_g_cm3`` are used.
     e_min_mev:
         Lower energy bound for range integration and validity guards.
+    stopping_scale:
+        Multiplicative correction applied to the mass stopping power. Defaults
+        to 1.0 (pure Bethe). Calibration fits this factor so the model range
+        matches a tabulated reference; a value >1 shortens the predicted range.
+        It absorbs the small, energy-independent bias from omitted shell
+        corrections and the CSDA-to-projected-range detour factor.
     """
 
     material: Material = WATER
     e_min_mev: float = 1.0
+    stopping_scale: float = 1.0
 
     def _beta2_gamma(self, energy_mev: NDArray[np.float64]):
         gamma = 1.0 + energy_mev / PROTON_MASS_MEV
@@ -102,7 +109,7 @@ class BetheStoppingPower:
         coeff = BETHE_K_MEV_CM2_PER_MOL * self.material.z_over_a / beta2
         s_mass = coeff * (0.5 * np.log(log_arg) - beta2)
         # Guard against the formula going negative at very low energy.
-        s_mass = np.maximum(s_mass, 0.0)
+        s_mass = np.maximum(s_mass, 0.0) * self.stopping_scale
         return s_mass
 
     def linear_stopping_power(self, energy_mev: ArrayLike) -> NDArray[np.float64]:

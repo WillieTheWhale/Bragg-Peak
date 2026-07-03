@@ -116,6 +116,30 @@ def bortfeld_reference(
     return curve.z_cm, curve.dose
 
 
+def nist_anchored_reference(
+    energy_mev: float,
+    z_cm: NDArray[np.float64],
+    *,
+    energy_spread_pct: float = 0.8,
+) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+    """Bortfeld shape re-ranged so its CSDA range equals the NIST PSTAR range.
+
+    The Bortfeld analytic curve reproduces the Bragg *shape* well but its own
+    range law sits ~1% short of NIST PSTAR. Anchoring the depth axis to the NIST
+    range gives a single reference that is correct in both range (NIST) and
+    shape (Bortfeld), which the water-phantom success criteria are stated
+    against.
+    """
+    from .calibrate import nist_range_cm
+
+    curve = bortfeld_depth_dose(energy_mev, z_cm, energy_spread_pct=energy_spread_pct)
+    scale = nist_range_cm(energy_mev) / curve.range_cm
+    # Evaluate Bortfeld at compressed depths so the peak lands at the NIST range.
+    z_query = z_cm / scale
+    curve2 = bortfeld_depth_dose(energy_mev, z_query, energy_spread_pct=energy_spread_pct)
+    return z_cm, curve2.dose
+
+
 @dataclass
 class CaseResult:
     """One candidate-vs-reference case with performance and provenance."""

@@ -1,0 +1,25 @@
+# NIST PSTAR proton CSDA ranges in liquid water.
+# Source: NIST PSTAR database (Berger et al.), ICRU Report 49 stopping powers.
+# These are genuine tabulated reference values used as the range ground truth.
+# columns: energy_MeV, csda_range_g_cm2
+10.0,1.2300e-01
+20.0,4.2600e-01
+30.0,8.8530e-01
+40.0,1.4890e+00
+50.0,2.2270e+00
+60.0,3.0930e+00
+70.0,4.0800e+00
+80.0,5.1840e+00
+90.0,6.3980e+00
+100.0,7.7180e+00
+110.0,9.1420e+00
+120.0,1.0660e+01
+130.0,1.2280e+01
+140.0,1.3990e+01
+150.0,1.5770e+01
+160.0,1.7650e+01
+175.0,2.0610e+01
+200.0,2.5960e+01
+225.0,3.1870e+01
+230.0,3.2990e+01
+250.0,3.7940e+01

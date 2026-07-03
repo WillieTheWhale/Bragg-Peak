@@ -1,0 +1,558 @@
+{
+  "provenance": {
+    "package_version": "0.1.0",
+    "python": "3.14.4",
+    "numpy": "2.5.0",
+    "model": "sde",
+    "energies_mev": [
+      80.0,
+      100.0,
+      150.0,
+      200.0,
+      230.0
+    ],
+    "dz_cm": 0.02,
+    "stopping_scale": 1.0046587186674003,
+    "calibration": {
+      "stopping_scale": 1.0046587186674003,
+      "energies_mev": [
+        60.0,
+        80.0,
+        100.0,
+        120.0,
+        150.0,
+        175.0,
+        200.0,
+        230.0
+      ],
+      "baseline_range_err_mm": [
+        0.1394059868656239,
+        0.23618552230091794,
+        0.36140829291925414,
+        0.5104779217194455,
+        0.8013102791633564,
+        1.1202411542952717,
+        1.22479185500179,
+        1.1551761373397085
+      ],
+      "calibrated_range_err_mm": [
+        -0.004666441877181349,
+        -0.0052977725850755775,
+        0.0018398149888820825,
+        0.013794248252736452,
+        0.06632137269729554,
+        0.159336931009193,
+        0.015317130741756557,
+        -0.37996500099261254
+      ],
+      "reference": "NIST PSTAR water CSDA range",
+      "baseline_rms_mm": 0.8060712357245344,
+      "calibrated_rms_mm": 0.14774907225240272,
+      "calibrated_max_abs_mm": 0.37996500099261254
+    },
+    "reference": "NIST-anchored Bortfeld analytic Bragg curve",
+    "thresholds": {
+      "peak_depth_err_mm": 0.5,
+      "r80_err_mm": 0.7,
+      "r90_err_mm": 0.7,
+      "rmse_pct": 1.5,
+      "gamma_2pct_2mm": 0.95
+    },
+    "wall_time_s": 8.1455951249809
+  },
+  "baseline": [
+    {
+      "name": "baseline_sde_80MeV",
+      "runtime_s": 0.25546683301217854,
+      "peak_memory_mb": 5.588823,
+      "metadata": {
+        "model": "sde_monte_carlo",
+        "initial_energy_mev": 80.0,
+        "dz_cm": 0.02,
+        "n_histories": 40000,
+        "energy_spread_pct": 0.8,
+        "e_cut_mev": 1.0,
+        "seed": 1234,
+        "nuclear_removal": true,
+        "nuclear_mu_per_cm": 0.01,
+        "nuclear_local_fraction": 0.6,
+        "slabs": [
+          {
+            "material": "liquid_water",
+            "thickness_cm": 6.48,
+            "density_g_cm3": 1.0,
+            "i_value_ev": 78.0
+          }
+        ],
+        "water_csda_range_cm": 5.207618552230092,
+        "stopping_model": "BetheStoppingPower",
+        "units": {
+          "z": "cm",
+          "dose": "MeV/g",
+          "energy": "MeV",
+          "let": "keV/um"
+        }
+      },
+      "peak_depth_err_mm": 0.19999999999999574,
+      "r90_err_mm": 0.4051208862892963,
+      "r80_err_mm": 0.43039895238948134,
+      "r50_err_mm": 0.4762077371542901,
+      "distal_falloff_diff_mm": 0.09619106521449261,
+      "rmse_pct": 6.3996032191196885,
+      "mae_pct": 5.711485595909543,
+      "gamma_2pct_2mm": 0.20973782771535582,
+      "gamma_3pct_3mm": 0.31835205992509363,
+      "ref_peak_depth_mm": 51.1,
+      "cand_peak_depth_mm": 51.3,
+      "ref_r80_mm": 51.84555637379844,
+      "cand_r80_mm": 52.27595532618792,
+      "energy_mev": 80.0
+    },
+    {
+      "name": "baseline_sde_100MeV",
+      "runtime_s": 0.372524083009921,
+      "peak_memory_mb": 5.584131,
+      "metadata": {
+        "model": "sde_monte_carlo",
+        "initial_energy_mev": 100.0,
+        "dz_cm": 0.02,
+        "n_histories": 40000,
+        "energy_spread_pct": 0.8,
+        "e_cut_mev": 1.0,
+        "seed": 1234,
+        "nuclear_removal": true,
+        "nuclear_mu_per_cm": 0.01,
+        "nuclear_local_fraction": 0.6,
+        "slabs": [
+          {
+            "material": "liquid_water",
+            "thickness_cm": 9.647499999999997,
+            "density_g_cm3": 1.0,
+            "i_value_ev": 78.0
+          }
+        ],
+        "water_csda_range_cm": 7.754140829291924,
+        "stopping_model": "BetheStoppingPower",
+        "units": {
+          "z": "cm",
+          "dose": "MeV/g",
+          "energy": "MeV",
+          "let": "keV/um"
+        }
+      },
+      "peak_depth_err_mm": 0.3999999999999915,
+      "r90_err_mm": 0.5562711085599403,
+      "r80_err_mm": 0.5539529241394234,
+      "r50_err_mm": 0.6062971277005431,
+      "distal_falloff_diff_mm": 0.11254489447575011,
+      "rmse_pct": 6.118950363369378,
+      "mae_pct": 5.5798575138549245,
+      "gamma_2pct_2mm": 0.19095477386934673,
+      "gamma_3pct_3mm": 0.2864321608040201,
+      "ref_peak_depth_mm": 75.9,
+      "cand_peak_depth_mm": 76.3,
+      "ref_r80_mm": 77.1839210928108,
+      "cand_r80_mm": 77.73787401695023,
+      "energy_mev": 100.0
+    },
+    {
+      "name": "baseline_sde_150MeV",
+      "runtime_s": 0.7365554580464959,
+      "peak_memory_mb": 5.604227,
+      "metadata": {
+        "model": "sde_monte_carlo",
+        "initial_energy_mev": 150.0,
+        "dz_cm": 0.02,
+        "n_histories": 40000,
+        "energy_spread_pct": 0.8,
+        "e_cut_mev": 1.0,
+        "seed": 1234,
+        "nuclear_removal": true,
+        "nuclear_mu_per_cm": 0.01,
+        "nuclear_local_fraction": 0.6,
+        "slabs": [
+          {
+            "material": "liquid_water",
+            "thickness_cm": 19.712500000000006,
+            "density_g_cm3": 1.0,
+            "i_value_ev": 78.0
+          }
+        ],
+        "water_csda_range_cm": 15.850131027916339,
+        "stopping_model": "BetheStoppingPower",
+        "units": {
+          "z": "cm",
+          "dose": "MeV/g",
+          "energy": "MeV",
+          "let": "keV/um"
+        }
+      },
+      "peak_depth_err_mm": 1.4000000000000057,
+      "r90_err_mm": 0.9494596456129898,
+      "r80_err_mm": 0.9848937177393111,
+      "r50_err_mm": 1.072807148439722,
+      "distal_falloff_diff_mm": 0.1404542685144783,
+      "rmse_pct": 5.74415426022678,
+      "mae_pct": 5.275050640481647,
+      "gamma_2pct_2mm": 0.12931034482758622,
+      "gamma_3pct_3mm": 0.3608374384236453,
+      "ref_peak_depth_mm": 155.1,
+      "cand_peak_depth_mm": 156.5,
+      "ref_r80_mm": 157.70743984392982,
+      "cand_r80_mm": 158.69233356166913,
+      "energy_mev": 150.0
+    },
+    {
+      "name": "baseline_sde_200MeV",
+      "runtime_s": 1.1883181249722838,
+      "peak_memory_mb": 5.629867,
+      "metadata": {
+        "model": "sde_monte_carlo",
+        "initial_energy_mev": 200.0,
+        "dz_cm": 0.02,
+        "n_histories": 40000,
+        "energy_spread_pct": 0.8,
+        "e_cut_mev": 1.0,
+        "seed": 1234,
+        "nuclear_removal": true,
+        "nuclear_mu_per_cm": 0.01,
+        "nuclear_local_fraction": 0.6,
+        "slabs": [
+          {
+            "material": "liquid_water",
+            "thickness_cm": 32.45,
+            "density_g_cm3": 1.0,
+            "i_value_ev": 78.0
+          }
+        ],
+        "water_csda_range_cm": 26.082479185500183,
+        "stopping_model": "BetheStoppingPower",
+        "units": {
+          "z": "cm",
+          "dose": "MeV/g",
+          "energy": "MeV",
+          "let": "keV/um"
+        }
+      },
+      "peak_depth_err_mm": 0.6000000000000227,
+      "r90_err_mm": 0.9217977808463615,
+      "r80_err_mm": 1.1304223120646384,
+      "r50_err_mm": 1.0499864342280034,
+      "distal_falloff_diff_mm": -0.011429374351124011,
+      "rmse_pct": 4.943143433796419,
+      "mae_pct": 4.543155987506106,
+      "gamma_2pct_2mm": 0.5591317365269461,
+      "gamma_3pct_3mm": 0.9476047904191617,
+      "ref_peak_depth_mm": 255.5,
+      "cand_peak_depth_mm": 256.1,
+      "ref_r80_mm": 259.59578602499175,
+      "cand_r80_mm": 260.7262083370564,
+      "energy_mev": 200.0
+    },
+    {
+      "name": "baseline_sde_230MeV",
+      "runtime_s": 1.487777374975849,
+      "peak_memory_mb": 5.647403,
+      "metadata": {
+        "model": "sde_monte_carlo",
+        "initial_energy_mev": 230.0,
+        "dz_cm": 0.02,
+        "n_histories": 40000,
+        "energy_spread_pct": 0.8,
+        "e_cut_mev": 1.0,
+        "seed": 1234,
+        "nuclear_removal": true,
+        "nuclear_mu_per_cm": 0.01,
+        "nuclear_local_fraction": 0.6,
+        "slabs": [
+          {
+            "material": "liquid_water",
+            "thickness_cm": 41.237500000000004,
+            "density_g_cm3": 1.0,
+            "i_value_ev": 78.0
+          }
+        ],
+        "water_csda_range_cm": 33.10551761373397,
+        "stopping_model": "BetheStoppingPower",
+        "units": {
+          "z": "cm",
+          "dose": "MeV/g",
+          "energy": "MeV",
+          "let": "keV/um"
+        }
+      },
+      "peak_depth_err_mm": 0.20000000000004547,
+      "r90_err_mm": 0.4749086622778691,
+      "r80_err_mm": 0.5014797187308773,
+      "r50_err_mm": 0.5065634019197773,
+      "distal_falloff_diff_mm": 0.06390706579772143,
+      "rmse_pct": 4.238551710147307,
+      "mae_pct": 3.8141055457053126,
+      "gamma_2pct_2mm": 0.8910482921083628,
+      "gamma_3pct_3mm": 0.9988221436984688,
+      "ref_peak_depth_mm": 324.7,
+      "cand_peak_depth_mm": 324.90000000000003,
+      "ref_r80_mm": 329.88364007419904,
+      "cand_r80_mm": 330.3851197929299,
+      "energy_mev": 230.0
+    }
+  ],
+  "calibrated": [
+    {
+      "name": "calibrated_sde_80MeV",
+      "runtime_s": 0.251121208013501,
+      "peak_memory_mb": 5.577779,
+      "metadata": {
+        "model": "sde_monte_carlo",
+        "initial_energy_mev": 80.0,
+        "dz_cm": 0.02,
+        "n_histories": 40000,
+        "energy_spread_pct": 0.8,
+        "e_cut_mev": 1.0,
+        "seed": 1234,
+        "nuclear_removal": true,
+        "nuclear_mu_per_cm": 0.01,
+        "nuclear_local_fraction": 0.6,
+        "slabs": [
+          {
+            "material": "liquid_water",
+            "thickness_cm": 6.48,
+            "density_g_cm3": 1.0,
+            "i_value_ev": 78.0
+          }
+        ],
+        "water_csda_range_cm": 5.183470222741493,
+        "stopping_model": "BetheStoppingPower",
+        "units": {
+          "z": "cm",
+          "dose": "MeV/g",
+          "energy": "MeV",
+          "let": "keV/um"
+        }
+      },
+      "peak_depth_err_mm": 0.0,
+      "r90_err_mm": 0.1648471184111031,
+      "r80_err_mm": 0.18136247822298657,
+      "r50_err_mm": 0.22642306602509876,
+      "distal_falloff_diff_mm": 0.09182321069538979,
+      "rmse_pct": 5.139534138581528,
+      "mae_pct": 4.872905070996525,
+      "gamma_2pct_2mm": 0.250936329588015,
+      "gamma_3pct_3mm": 0.34831460674157305,
+      "ref_peak_depth_mm": 51.1,
+      "cand_peak_depth_mm": 51.1,
+      "ref_r80_mm": 51.84555637379844,
+      "cand_r80_mm": 52.026918852021424,
+      "energy_mev": 80.0
+    },
+    {
+      "name": "calibrated_sde_100MeV",
+      "runtime_s": 0.367778540996369,
+      "peak_memory_mb": 5.584163,
+      "metadata": {
+        "model": "sde_monte_carlo",
+        "initial_energy_mev": 100.0,
+        "dz_cm": 0.02,
+        "n_histories": 40000,
+        "energy_spread_pct": 0.8,
+        "e_cut_mev": 1.0,
+        "seed": 1234,
+        "nuclear_removal": true,
+        "nuclear_mu_per_cm": 0.01,
+        "nuclear_local_fraction": 0.6,
+        "slabs": [
+          {
+            "material": "liquid_water",
+            "thickness_cm": 9.647499999999997,
+            "density_g_cm3": 1.0,
+            "i_value_ev": 78.0
+          }
+        ],
+        "water_csda_range_cm": 7.718183981498886,
+        "stopping_model": "BetheStoppingPower",
+        "units": {
+          "z": "cm",
+          "dose": "MeV/g",
+          "energy": "MeV",
+          "let": "keV/um"
+        }
+      },
+      "peak_depth_err_mm": 0.0,
+      "r90_err_mm": 0.19569315182278046,
+      "r80_err_mm": 0.21058431288021495,
+      "r50_err_mm": 0.2419019009661696,
+      "distal_falloff_diff_mm": 0.08808286711676772,
+      "rmse_pct": 4.972610670598567,
+      "mae_pct": 4.734816741584177,
+      "gamma_2pct_2mm": 0.22110552763819097,
+      "gamma_3pct_3mm": 0.3341708542713568,
+      "ref_peak_depth_mm": 75.9,
+      "cand_peak_depth_mm": 75.9,
+      "ref_r80_mm": 77.1839210928108,
+      "cand_r80_mm": 77.39450540569102,
+      "energy_mev": 100.0
+    },
+    {
+      "name": "calibrated_sde_150MeV",
+      "runtime_s": 0.7356395830283873,
+      "peak_memory_mb": 5.604259,
+      "metadata": {
+        "model": "sde_monte_carlo",
+        "initial_energy_mev": 150.0,
+        "dz_cm": 0.02,
+        "n_histories": 40000,
+        "energy_spread_pct": 0.8,
+        "e_cut_mev": 1.0,
+        "seed": 1234,
+        "nuclear_removal": true,
+        "nuclear_mu_per_cm": 0.01,
+        "nuclear_local_fraction": 0.6,
+        "slabs": [
+          {
+            "material": "liquid_water",
+            "thickness_cm": 19.712500000000006,
+            "density_g_cm3": 1.0,
+            "i_value_ev": 78.0
+          }
+        ],
+        "water_csda_range_cm": 15.776632137269733,
+        "stopping_model": "BetheStoppingPower",
+        "units": {
+          "z": "cm",
+          "dose": "MeV/g",
+          "energy": "MeV",
+          "let": "keV/um"
+        }
+      },
+      "peak_depth_err_mm": 0.8000000000000114,
+      "r90_err_mm": 0.2419839039924625,
+      "r80_err_mm": 0.24822493891309705,
+      "r50_err_mm": 0.3322736879289323,
+      "distal_falloff_diff_mm": 0.15294848536722583,
+      "rmse_pct": 4.6796000647248075,
+      "mae_pct": 4.418444640448394,
+      "gamma_2pct_2mm": 0.1896551724137931,
+      "gamma_3pct_3mm": 0.44950738916256155,
+      "ref_peak_depth_mm": 155.1,
+      "cand_peak_depth_mm": 155.9,
+      "ref_r80_mm": 157.70743984392982,
+      "cand_r80_mm": 157.95566478284292,
+      "energy_mev": 150.0
+    },
+    {
+      "name": "calibrated_sde_200MeV",
+      "runtime_s": 1.1825240830075927,
+      "peak_memory_mb": 5.629715,
+      "metadata": {
+        "model": "sde_monte_carlo",
+        "initial_energy_mev": 200.0,
+        "dz_cm": 0.02,
+        "n_histories": 40000,
+        "energy_spread_pct": 0.8,
+        "e_cut_mev": 1.0,
+        "seed": 1234,
+        "nuclear_removal": true,
+        "nuclear_mu_per_cm": 0.01,
+        "nuclear_local_fraction": 0.6,
+        "slabs": [
+          {
+            "material": "liquid_water",
+            "thickness_cm": 32.45,
+            "density_g_cm3": 1.0,
+            "i_value_ev": 78.0
+          }
+        ],
+        "water_csda_range_cm": 25.96153171307418,
+        "stopping_model": "BetheStoppingPower",
+        "units": {
+          "z": "cm",
+          "dose": "MeV/g",
+          "energy": "MeV",
+          "let": "keV/um"
+        }
+      },
+      "peak_depth_err_mm": -0.19999999999998863,
+      "r90_err_mm": -0.12253635057692236,
+      "r80_err_mm": -0.018521523600156797,
+      "r50_err_mm": -0.12932967418959151,
+      "distal_falloff_diff_mm": -0.057661726249520484,
+      "rmse_pct": 4.1860046033496845,
+      "mae_pct": 3.7281446528560997,
+      "gamma_2pct_2mm": 0.6586826347305389,
+      "gamma_3pct_3mm": 0.9588323353293413,
+      "ref_peak_depth_mm": 255.5,
+      "cand_peak_depth_mm": 255.3,
+      "ref_r80_mm": 259.59578602499175,
+      "cand_r80_mm": 259.5772645013916,
+      "energy_mev": 200.0
+    },
+    {
+      "name": "calibrated_sde_230MeV",
+      "runtime_s": 1.45544291700935,
+      "peak_memory_mb": 5.647251,
+      "metadata": {
+        "model": "sde_monte_carlo",
+        "initial_energy_mev": 230.0,
+        "dz_cm": 0.02,
+        "n_histories": 40000,
+        "energy_spread_pct": 0.8,
+        "e_cut_mev": 1.0,
+        "seed": 1234,
+        "nuclear_removal": true,
+        "nuclear_mu_per_cm": 0.01,
+        "nuclear_local_fraction": 0.6,
+        "slabs": [
+          {
+            "material": "liquid_water",
+            "thickness_cm": 41.237500000000004,
+            "density_g_cm3": 1.0,
+            "i_value_ev": 78.0
+          }
+        ],
+        "water_csda_range_cm": 32.95200349990074,
+        "stopping_model": "BetheStoppingPower",
+        "units": {
+          "z": "cm",
+          "dose": "MeV/g",
+          "energy": "MeV",
+          "let": "keV/um"
+        }
+      },
+      "peak_depth_err_mm": -1.0,
+      "r90_err_mm": -0.9765618220400825,
+      "r80_err_mm": -0.9945599051167733,
+      "r50_err_mm": -1.0255126966675334,
+      "distal_falloff_diff_mm": -0.0328034141957545,
+      "rmse_pct": 4.138814177471923,
+      "mae_pct": 3.6275548821393575,
+      "gamma_2pct_2mm": 0.9334511189634864,
+      "gamma_3pct_3mm": 0.9994110718492344,
+      "ref_peak_depth_mm": 324.7,
+      "cand_peak_depth_mm": 323.7,
+      "ref_r80_mm": 329.88364007419904,
+      "cand_r80_mm": 328.88908016908226,
+      "energy_mev": 230.0
+    }
+  ],
+  "passed": false,
+  "violations": [
+    "80 MeV: rmse_pct=5.140 violates <=1.5",
+    "80 MeV: gamma_2pct_2mm=0.251 violates >=0.95",
+    "100 MeV: rmse_pct=4.973 violates <=1.5",
+    "100 MeV: gamma_2pct_2mm=0.221 violates >=0.95",
+    "150 MeV: peak_depth_err_mm=0.800 violates <=0.5",
+    "150 MeV: rmse_pct=4.680 violates <=1.5",
+    "150 MeV: gamma_2pct_2mm=0.190 violates >=0.95",
+    "200 MeV: rmse_pct=4.186 violates <=1.5",
+    "200 MeV: gamma_2pct_2mm=0.659 violates >=0.95",
+    "230 MeV: peak_depth_err_mm=-1.000 violates <=0.5",
+    "230 MeV: r80_err_mm=-0.995 violates <=0.7",
+    "230 MeV: r90_err_mm=-0.977 violates <=0.7",
+    "230 MeV: rmse_pct=4.139 violates <=1.5",
+    "230 MeV: gamma_2pct_2mm=0.933 violates >=0.95"
+  ],
+  "regression_ok": true,
+  "regression_msgs": [
+    "no committed baseline; establishing one"
+  ]
+}
