@@ -85,11 +85,18 @@ are only approximated by the constant-rate local-deposition nuclear model
 (γ 2%/2mm 58–74 %). The γ 2%/2mm criterion is also intrinsically tight on the
 steep distal edge, where sub-percent shape differences fail the 2 % dose test.
 
+Diagnosis by depth region (150 MeV, vs 400 k-primary Geant4): plateau RMS
+1.3 %, distal edge RMS 0.7 % — both excellent — but the **proximal shoulder**
+RMS is 3.2 %. The SDE peak is narrower (FWHM 18.5 vs 21.2 mm) with too steep a
+proximal rise. A per-step Landau/hard-collision skew was tried and **did not
+help** (per-step skew averages back to Gaussian by the central limit theorem
+over ~300 steps), so it was reverted.
+
 **Next experiments:**
-1. Make the nuclear removal rate and local-deposition fraction energy-dependent
-   (fit per-energy against the Geant4 ladder) to model the growing fragmentation
-   tail at high energy — expected to lift 200 MeV γ 2%/2mm past 90 %.
-2. Add a Geant4 heterogeneous reference (bone/lung slab) to replace the WEPL
-   analytic reference and confirm the ≤1.0 mm result against true MC.
-3. Raise the Geant4 reference statistics (≥1 M primaries) in a nightly job so the
+1. Fatten the proximal shoulder with an explicit range-spread kernel or true
+   delta-ray transport (the part that survives the central limit theorem),
+   rather than per-step energy-loss skew — the direct route to γ 2%/2mm ≥ 95 %.
+2. Make the nuclear removal rate energy-dependent (fit per-energy vs the Geant4
+   ladder) to model the growing fragmentation tail at 200 MeV.
+3. Raise Geant4 reference statistics (≥ 1 M primaries) in a nightly job so the
    γ 2%/2mm pass rate is not limited by reference Poisson noise.
