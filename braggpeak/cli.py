@@ -106,6 +106,18 @@ def cmd_benchmark(args: argparse.Namespace) -> int:
     return 0 if report.regression_ok else 1
 
 
+def cmd_gate_benchmark(args: argparse.Namespace) -> int:
+    from .benchmark import run_gate_benchmark
+
+    payload = run_gate_benchmark(out_dir=args.out, dz_cm=args.dz,
+                                 n_primaries=args.primaries)
+    print(f"Geant4 benchmark written to {args.out}")
+    for r in payload["records"]:
+        print(f"  {r['energy_mev']:.0f} MeV: dR80={r['r80_err_mm']:+.2f}mm "
+              f"RMSE={r['rmse_pct']:.2f}% gamma3/3={r['gamma_3pct_3mm']*100:.0f}%")
+    return 0
+
+
 def cmd_version(_args: argparse.Namespace) -> int:
     print(__version__)
     return 0
@@ -130,6 +142,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_bench.add_argument("--model", default="sde", choices=["sde", "csda"], help="Candidate model.")
     p_bench.add_argument("--dz", type=float, default=0.02, help="Voxel size (cm).")
     p_bench.set_defaults(func=cmd_benchmark)
+
+    p_gate = sub.add_parser("gate-benchmark", help="Compare SDE vs a Geant4/OpenGATE reference.")
+    p_gate.add_argument("--out", default="benchmarks/gate_water", help="Output directory.")
+    p_gate.add_argument("--dz", type=float, default=0.05, help="Voxel size (cm).")
+    p_gate.add_argument("--primaries", type=int, default=200000, help="Geant4 primaries.")
+    p_gate.set_defaults(func=cmd_gate_benchmark)
 
     p_ver = sub.add_parser("version", help="Print version.")
     p_ver.set_defaults(func=cmd_version)

@@ -25,7 +25,7 @@ from .calibrate import fit_stopping_scale, calibrated_stopping_factory, nist_ran
 from .materials import WATER
 from .sde_model import simulate_depth_dose_sde
 from .transport import Slab, simulate_depth_dose
-from .validation import nist_anchored_reference, run_case
+from .validation import nist_anchored_reference, run_case, compare_curves
 
 
 # Success-criteria thresholds for the homogeneous water phantom.
@@ -206,6 +206,101 @@ def run_benchmark(
         baseline_metrics_path.write_text(json.dumps(metrics_payload, indent=2, default=float))
     (out / "report.md").write_text(_render_markdown(report))
     return report
+
+
+def run_gate_benchmark(
+    out_dir: str | Path = "benchmarks/gate_water",
+    energies: list[float] | None = None,
+    dz_cm: float = 0.05,
+    n_primaries: int = 200000,
+    n_histories: int = 120000,
+) -> dict:
+    """Compare the calibrated SDE model against a Geant4/OpenGATE reference.
+
+    For each energy, generates (or reuses) a cached high-statistics Geant4
+    depth-dose, runs the calibrated SDE, and reports range/shape/gamma metrics
+    plus the SDE-vs-Geant4 runtime speedup. Heavy (needs a Geant4 backend), so
+    this is a nightly/manual benchmark, separate from the fast CI loop.
+    """
+    from .monte_carlo_gate import opengate_available, simulate_depth_dose_gate
+
+    if not opengate_available():
+        raise RuntimeError("Geant4 benchmark requires the opengate extra.")
+    energies = energies or [100.0, 150.0, 200.0]
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    ref_dir = out / "gate_refs"
+    ref_dir.mkdir(exist_ok=True)
+
+    cal = fit_stopping_scale()
+    factory = calibrated_stopping_factory(cal.stopping_scale)
+    records = []
+    for e in energies:
+        depth = nist_range_cm(e) * 1.35
+        ref_path = ref_dir / f"water_{int(e)}.npz"
+        t_gate = None
+        if ref_path.exists():
+            data = np.load(ref_path)
+            z_ref, dose_ref = data["z_cm"], data["dose"]
+        else:
+            t0 = time.perf_counter()
+            g = simulate_depth_dose_gate(e, [Slab(WATER, depth)], dz_cm=dz_cm,
+                                         n_primaries=n_primaries, seed=1)
+            t_gate = time.perf_counter() - t0
+            z_ref, dose_ref = g.z_cm, g.dose
+            np.savez(ref_path, z_cm=z_ref, dose=dose_ref, runtime_s=t_gate)
+
+        t1 = time.perf_counter()
+        s = simulate_depth_dose_sde(e, [Slab(WATER, depth)], dz_cm=dz_cm,
+                                    n_histories=n_histories, seed=1234,
+                                    stopping_model_factory=factory)
+        t_sde = time.perf_counter() - t1
+        comp = compare_curves(z_ref, dose_ref, s.z_cm, s.dose, low_dose_threshold=0.01)
+        rec = comp.as_dict()
+        rec["energy_mev"] = e
+        rec["sde_runtime_s"] = t_sde
+        rec["gate_runtime_s"] = t_gate
+        rec["speedup"] = (t_gate / t_sde) if t_gate else None
+        records.append(rec)
+
+    payload = {
+        "reference": "OpenGATE/Geant4 QGSP_BIC_EMZ",
+        "stopping_scale": cal.stopping_scale,
+        "package_version": __version__,
+        "n_primaries": n_primaries,
+        "n_histories": n_histories,
+        "records": records,
+    }
+    (out / "metrics.json").write_text(json.dumps(payload, indent=2, default=float))
+    (out / "report.md").write_text(_render_gate_markdown(payload))
+    return payload
+
+
+def _render_gate_markdown(payload: dict) -> str:
+    lines = [
+        "# Water-phantom benchmark vs Geant4/OpenGATE",
+        "",
+        "> Research software only. No clinical claims.",
+        "",
+        f"- Reference: {payload['reference']}  ·  "
+        f"{payload['n_primaries']} primaries",
+        f"- Candidate: calibrated SDE (scale {payload['stopping_scale']:.5f}), "
+        f"{payload['n_histories']} histories",
+        "",
+        "| E (MeV) | Δpeak (mm) | ΔR80 (mm) | ΔR90 (mm) | RMSE % | γ 2/2 (%) | "
+        "γ 3/3 (%) | SDE t (s) | speedup |",
+        "|" + "---|" * 9,
+    ]
+    for r in payload["records"]:
+        sp = f"{r['speedup']:.1f}x" if r.get("speedup") else "cached"
+        lines.append(
+            f"| {r['energy_mev']:.0f} | {r['peak_depth_err_mm']:+.2f} | "
+            f"{r['r80_err_mm']:+.2f} | {r['r90_err_mm']:+.2f} | {r['rmse_pct']:.2f} | "
+            f"{r['gamma_2pct_2mm']*100:.0f} | {r['gamma_3pct_3mm']*100:.0f} | "
+            f"{r['sde_runtime_s']:.2f} | {sp} |"
+        )
+    lines.append("")
+    return "\n".join(lines)
 
 
 def _fmt_row(r: dict) -> str:

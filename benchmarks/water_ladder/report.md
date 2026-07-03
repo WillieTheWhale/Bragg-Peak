@@ -6,45 +6,43 @@
 - Reference: NIST-anchored Bortfeld analytic Bragg curve
 - Fitted stopping-power scale: **1.00466**
 - Calibration baseline range RMS: 0.806 mm -> calibrated 0.148 mm
-- Wall time: 8.3 s
+- Wall time: 8.4 s
 
 ## Result: FAIL
 
 Threshold violations:
-- 80 MeV: rmse_pct=5.140 violates <=1.5
-- 80 MeV: gamma_2pct_2mm=0.251 violates >=0.95
-- 100 MeV: rmse_pct=4.973 violates <=1.5
-- 100 MeV: gamma_2pct_2mm=0.221 violates >=0.95
+- 80 MeV: rmse_pct=4.496 violates <=1.5
+- 80 MeV: gamma_2pct_2mm=0.300 violates >=0.95
+- 100 MeV: rmse_pct=4.176 violates <=1.5
+- 100 MeV: gamma_2pct_2mm=0.314 violates >=0.95
 - 150 MeV: peak_depth_err_mm=0.800 violates <=0.5
-- 150 MeV: rmse_pct=4.680 violates <=1.5
-- 150 MeV: gamma_2pct_2mm=0.190 violates >=0.95
-- 200 MeV: rmse_pct=4.186 violates <=1.5
-- 200 MeV: gamma_2pct_2mm=0.659 violates >=0.95
+- 150 MeV: rmse_pct=3.713 violates <=1.5
+- 150 MeV: gamma_2pct_2mm=0.813 violates >=0.95
+- 200 MeV: rmse_pct=3.254 violates <=1.5
 - 230 MeV: peak_depth_err_mm=-1.000 violates <=0.5
-- 230 MeV: r80_err_mm=-0.995 violates <=0.7
-- 230 MeV: r90_err_mm=-0.977 violates <=0.7
-- 230 MeV: rmse_pct=4.139 violates <=1.5
-- 230 MeV: gamma_2pct_2mm=0.933 violates >=0.95
+- 230 MeV: r80_err_mm=-1.030 violates <=0.7
+- 230 MeV: r90_err_mm=-1.034 violates <=0.7
+- 230 MeV: rmse_pct=3.696 violates <=1.5
 
 ## Calibrated ladder vs NIST-anchored reference
 
 | E (MeV) | peak (mm) | ref peak | Δpeak (mm) | ΔR80 (mm) | ΔR90 (mm) | RMSE % | γ 2/2 (%) | t (ms) |
 |---|---|---|---|---|---|---|---|---|
-| 80 | 51.10 | 51.10 | +0.00 | +0.18 | +0.16 | 5.14 | 25.1 | 252 |
-| 100 | 75.90 | 75.90 | +0.00 | +0.21 | +0.20 | 4.97 | 22.1 | 373 |
-| 150 | 155.90 | 155.10 | +0.80 | +0.25 | +0.24 | 4.68 | 19.0 | 742 |
-| 200 | 255.30 | 255.50 | -0.20 | -0.02 | -0.12 | 4.19 | 65.9 | 1211 |
-| 230 | 323.70 | 324.70 | -1.00 | -0.99 | -0.98 | 4.14 | 93.3 | 1492 |
+| 80 | 51.10 | 51.10 | +0.00 | +0.18 | +0.16 | 4.50 | 30.0 | 257 |
+| 100 | 75.90 | 75.90 | +0.00 | +0.21 | +0.19 | 4.18 | 31.4 | 380 |
+| 150 | 155.90 | 155.10 | +0.80 | +0.24 | +0.24 | 3.71 | 81.3 | 755 |
+| 200 | 255.70 | 255.50 | +0.20 | -0.02 | -0.14 | 3.25 | 99.5 | 1206 |
+| 230 | 323.70 | 324.70 | -1.00 | -1.03 | -1.03 | 3.70 | 99.8 | 1507 |
 
 ## Baseline (uncalibrated) ladder
 
 | E (MeV) | peak (mm) | ref peak | Δpeak (mm) | ΔR80 (mm) | ΔR90 (mm) | RMSE % | γ 2/2 (%) | t (ms) |
 |---|---|---|---|---|---|---|---|---|
-| 80 | 51.30 | 51.10 | +0.20 | +0.43 | +0.41 | 6.40 | 21.0 | 261 |
-| 100 | 76.30 | 75.90 | +0.40 | +0.55 | +0.56 | 6.12 | 19.1 | 382 |
-| 150 | 156.50 | 155.10 | +1.40 | +0.98 | +0.95 | 5.74 | 12.9 | 754 |
-| 200 | 256.10 | 255.50 | +0.60 | +1.13 | +0.92 | 4.94 | 55.9 | 1194 |
-| 230 | 324.90 | 324.70 | +0.20 | +0.50 | +0.47 | 4.24 | 89.1 | 1487 |
+| 80 | 51.30 | 51.10 | +0.20 | +0.43 | +0.40 | 5.81 | 28.5 | 261 |
+| 100 | 76.30 | 75.90 | +0.40 | +0.55 | +0.55 | 5.45 | 29.1 | 381 |
+| 150 | 156.50 | 155.10 | +1.40 | +0.98 | +0.94 | 4.89 | 76.4 | 761 |
+| 200 | 256.10 | 255.50 | +0.60 | +1.10 | +0.88 | 4.14 | 96.9 | 1215 |
+| 230 | 324.90 | 324.70 | +0.20 | +0.49 | +0.47 | 3.45 | 99.8 | 1513 |
 
 ## Success thresholds (water)
 

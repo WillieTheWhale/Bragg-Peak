@@ -51,7 +51,7 @@ def simulate_depth_dose_sde(
     seed: int = 0,
     nuclear_removal: bool = True,
     nuclear_mu_per_cm: float = 0.010,
-    nuclear_local_fraction: float = 0.6,
+    nuclear_local_fraction: float = 0.9,
     stopping_model_factory=None,
 ) -> DepthDose:
     """Monte Carlo SDE transport of a monoenergetic pencil beam.
@@ -189,7 +189,7 @@ def simulate_depth_dose_ct(
     seed: int = 0,
     nuclear_removal: bool = True,
     nuclear_mu_per_cm: float = 0.010,
-    nuclear_local_fraction: float = 0.6,
+    nuclear_local_fraction: float = 0.9,
     stopping_scale: float = 1.0,
 ) -> DepthDose:
     """SDE transport through a 1-D CT profile using the HU -> RSP calibration.
