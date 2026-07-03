@@ -1,0 +1,18 @@
+# Homogeneous water phantom, 150 MeV pristine proton pencil beam.
+# Every physical input is explicit; the output metadata echoes all of it.
+name: water_150mev
+seed: 20260703
+output_dir: experiments/output
+
+beam:
+  energy_mev: 150.0        # initial proton kinetic energy
+  energy_spread_pct: 0.8   # 1-sigma initial energy spread, percent of energy
+  fluence0: 1.0            # entrance fluence, arbitrary units
+
+slabs:
+  - material: liquid_water # named material from braggpeak.materials.REGISTRY
+    thickness_cm: 20.0     # phantom depth along the beam
+
+numerics:
+  dz_cm: 0.01              # depth voxel size / step
+  e_cut_mev: 1.0           # stop protons below this energy

@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "braggpeak"
+version = "0.1.0"
+description = "Reproducible, recursively tested proton Bragg-peak simulation and validation platform (research only)."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "LGPL-3.0-or-later" }
+authors = [{ name = "Natural Sciences Computing Club" }]
+dependencies = [
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+plot = ["matplotlib>=3.7"]
+gate = ["opengate>=10.0"]
+ml = ["torch>=2.0"]
+gpu = ["cupy-cuda12x>=12.0"]
+dev = ["pytest>=7.4", "pytest-cov>=4.1"]
+
+[project.scripts]
+braggpeak = "braggpeak.cli:main"
+
+[tool.setuptools]
+packages = ["braggpeak"]
+
+[tool.setuptools.package-data]
+braggpeak = ["data/*.csv"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

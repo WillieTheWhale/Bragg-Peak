@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+.DS_Store
+opengate/
+bragg_peak_frontier_research_pack/
+benchmarks/**/artifacts/
+*.npz
+.venv/
+build/
+dist/
+experiments/output/
