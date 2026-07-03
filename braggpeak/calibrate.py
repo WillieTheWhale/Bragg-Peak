@@ -113,6 +113,33 @@ def calibrated_stopping_factory(scale: float):
     return lambda m: BetheStoppingPower(m, stopping_scale=scale)
 
 
+# Per-material stopping-power corrections relative to the water scale. With the
+# Geant4 reference using standard NIST materials whose ICRU mean-excitation
+# energies already match the braggpeak materials, no correction is needed and
+# these are 1.0; the mechanism remains for future per-material RSP calibration.
+GEANT4_MATERIAL_SCALE = {
+    "liquid_water": 1.0,
+    "icru_cortical_bone": 1.0,
+    "icru_lung_inflated": 1.0,
+}
+
+
+def calibrated_factory_map(water_scale: float, material_scale: dict[str, float] | None = None):
+    """Factory applying the water calibration plus per-material RSP corrections.
+
+    Each material's stopping power is scaled by ``water_scale * material_scale``,
+    so water keeps its NIST calibration while bone/lung match the Geant4 RSP.
+    Unlisted materials fall back to the water scale alone.
+    """
+    material_scale = material_scale if material_scale is not None else GEANT4_MATERIAL_SCALE
+
+    def factory(m):
+        s = water_scale * material_scale.get(m.name, 1.0)
+        return BetheStoppingPower(m, stopping_scale=s)
+
+    return factory
+
+
 def relative_stopping_power(
     material: Material,
     *,

@@ -152,6 +152,10 @@ def _simulate_in_process(
                       (total_depth_cm * 2 + 40.0) * u.cm]
     sim.world.material = "G4_AIR"
 
+    # Use standard Geant4 NIST materials: their ICRU mean-excitation energies
+    # match the braggpeak reference materials exactly (water 78, bone 91.9,
+    # soft-tissue 72.3, air 85.7 eV), so candidate and reference agree on
+    # stopping power. (add_material_weights cannot set I, which would bias range.)
     # Stack slabs along z; entrance face of the first slab at world z origin.
     z_cursor = 0.0
     phantom_names = []
@@ -211,7 +215,8 @@ def _simulate_in_process(
         "gate_version": getattr(gate, "__version__", "unknown"),
         "slabs": [
             {"material": s.material.name, "thickness_cm": s.thickness_cm,
-             "g4_material": g4_material_name(s.material)}
+             "g4_material": g4_material_name(s.material),
+             "density_g_cm3": s.material.density_g_cm3}
             for s in slabs
         ],
         "units": {"z": "cm", "dose": "MeV/g", "energy": "MeV"},

@@ -77,11 +77,28 @@ def test_sde_matches_gate_range_within_criteria():
 
     scale = fit_stopping_scale().stopping_scale
     g = simulate_depth_dose_gate(150.0, [Slab(WATER, 20.0)], dz_cm=0.05,
-                                 n_primaries=40000, seed=1)
+                                 n_primaries=60000, seed=1)
     s = simulate_depth_dose_sde(150.0, [Slab(WATER, 20.0)], dz_cm=0.05,
-                                n_histories=40000, seed=1234,
+                                n_histories=60000, seed=1234,
                                 stopping_model_factory=calibrated_stopping_factory(scale))
     c = compare_curves(g.z_cm, g.dose, s.z_cm, s.dose, low_dose_threshold=0.01)
     # Range agreement with the Geant4 reference meets the water criteria.
-    assert abs(c.peak_depth_err_mm) <= 1.5
+    assert abs(c.peak_depth_err_mm) <= 1.0
     assert abs(c.r80_err_mm) <= 0.7
+
+
+@gate_required
+def test_sde_matches_gate_heterogeneous_bone_within_1mm():
+    """Water-bone-water range vs Geant4 meets the 1.0 mm heterogeneous criterion."""
+    from braggpeak.calibrate import calibrated_stopping_factory
+    from braggpeak.sde_model import simulate_depth_dose_sde
+    from braggpeak.materials import CORTICAL_BONE
+
+    scale = fit_stopping_scale().stopping_scale
+    slabs = [Slab(WATER, 5.0), Slab(CORTICAL_BONE, 2.0), Slab(WATER, 15.0)]
+    g = simulate_depth_dose_gate(150.0, slabs, dz_cm=0.05, n_primaries=150000, seed=1)
+    s = simulate_depth_dose_sde(150.0, slabs, dz_cm=0.05, n_histories=120000, seed=1234,
+                                stopping_model_factory=calibrated_stopping_factory(scale))
+    c = compare_curves(g.z_cm, g.dose, s.z_cm, s.dose, low_dose_threshold=0.01)
+    assert abs(c.peak_depth_err_mm) <= 1.0
+    assert abs(c.r80_err_mm) <= 1.0

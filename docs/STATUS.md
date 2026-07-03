@@ -38,6 +38,16 @@ Calibrated SDE (scale 1.00466, tuned nuclear model) vs Geant4 `QGSP_BIC_EMZ`,
 Range accuracy against real Geant4 is **sub-0.1 mm at 150/200 MeV** — frontier
 quality. The SDE is ~14× faster than Geant4 for equivalent depth-dose scoring.
 
+Material consistency matters: the Geant4 reference uses standard NIST materials
+(`G4_WATER`, `G4_BONE_COMPACT_ICRU`, `G4_TISSUE_SOFT_ICRP`), whose ICRU
+mean-excitation energies (78, 91.9, 72.3 eV) match the braggpeak materials
+exactly, so candidate and reference share stopping-power inputs. An early
+attempt to register custom materials via `add_material_weights` silently
+dropped the I-value (Geant4 recomputed it from Bragg additivity), biasing the
+water range by ~2.8 mm — a caught pitfall now documented in `monte_carlo_gate.py`.
+The residual ~1 mm through bone is the Bethe-formula vs Geant4 ICRU-73
+stopping-table difference for bone, still within the 1.0 mm criterion.
+
 ## Calibration
 
 A single multiplicative stopping-power scale (**1.00466**), fit in closed form
@@ -52,7 +62,8 @@ Current column is vs the **Geant4** reference where available, else the analytic
 |---|---|---|---|
 | Water peak-depth error | ≤ 0.5 mm | 0.00 mm (100/150), +1.0 mm (200) | met at 100/150 |
 | Water R80/R90 range error | ≤ 0.7 mm | ≤ 0.42 mm vs Geant4 (0.03 mm at 150/200) | **met** |
-| Heterogeneous range error (bone/lung) | ≤ 1.0 mm | +0.20 mm peak, +0.36 mm R80 | **met** |
+| Heterogeneous range vs **Geant4** (water-bone-water) | ≤ 1.0 mm | +1.0 mm peak, +0.73 mm R80 | **met** |
+| Heterogeneous range vs analytic WEPL (bone/lung) | ≤ 1.0 mm | +0.20 mm peak, +0.36 mm R80 | **met** |
 | Patient-like (CT head) range error | ≤ 1.0 mm | +0.20 mm peak, +0.32 mm R80 | **met** |
 | Water depth-dose RMSE | ≤ 1.5 % | 2.0–3.0 % vs Geant4 | close (met ~1.9% at 150) |
 | Gamma 3%/3mm | ≥ 90 % | 99–100 % (100/150), 83 % (200) | met at 100/150 |
