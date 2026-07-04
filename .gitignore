@@ -17,3 +17,4 @@ experiments/bt/
 *.pt
 codex_logs/
 CODEX_SMOKE.txt
+configs/_*.yaml
