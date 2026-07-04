@@ -88,6 +88,24 @@ def test_sde_matches_gate_range_within_criteria():
 
 
 @gate_required
+def test_sde_matches_gate_water_shape_gamma():
+    """Water dose-shape vs Geant4 meets the gamma criteria at 150 MeV."""
+    from braggpeak.calibrate import calibrated_stopping_factory
+    from braggpeak.sde_model import simulate_depth_dose_sde
+
+    scale = fit_stopping_scale().stopping_scale
+    g = simulate_depth_dose_gate(150.0, [Slab(WATER, 23.0)], dz_cm=0.05,
+                                 n_primaries=300000, seed=1)
+    s = simulate_depth_dose_sde(150.0, [Slab(WATER, 23.0)], dz_cm=0.05,
+                                n_histories=200000, seed=1234,
+                                stopping_model_factory=calibrated_stopping_factory(scale))
+    c = compare_curves(g.z_cm, g.dose, s.z_cm, s.dose, low_dose_threshold=0.01)
+    assert c.gamma_2pct_2mm >= 0.95   # water target
+    assert c.gamma_3pct_3mm >= 0.95
+    assert c.rmse_pct <= 1.5
+
+
+@gate_required
 def test_sde_matches_gate_heterogeneous_bone_within_1mm():
     """Water-bone-water range vs Geant4 meets the 1.0 mm heterogeneous criterion."""
     from braggpeak.calibrate import calibrated_stopping_factory

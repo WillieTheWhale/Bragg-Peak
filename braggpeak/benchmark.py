@@ -212,8 +212,8 @@ def run_gate_benchmark(
     out_dir: str | Path = "benchmarks/gate_water",
     energies: list[float] | None = None,
     dz_cm: float = 0.05,
-    n_primaries: int = 200000,
-    n_histories: int = 120000,
+    n_primaries: int = 300000,
+    n_histories: int = 150000,
 ) -> dict:
     """Compare the calibrated SDE model against a Geant4/OpenGATE reference.
 

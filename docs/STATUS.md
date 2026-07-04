@@ -26,17 +26,26 @@ braggpeak gate-benchmark               # SDE vs Geant4/OpenGATE (needs the gate 
 
 ## SDE vs Geant4/OpenGATE (real Monte Carlo ground truth)
 
-Calibrated SDE (scale 1.00466, tuned nuclear model) vs Geant4 `QGSP_BIC_EMZ`,
-250 k primaries reference, 120 k SDE histories, dz = 0.5 mm:
+Calibrated SDE (scale 1.00466, forward nuclear-secondary model) vs Geant4
+`QGSP_BIC_EMZ`, 300 k primaries reference, 150 k SDE histories, dz = 0.5 mm:
 
-| E (MeV) | Δpeak (mm) | ΔR80 (mm) | RMSE % | γ 3%/3mm | speedup |
-|---|---|---|---|---|---|
-| 100 | 0.00 | +0.42 | 3.0 | 100% | ~14× |
-| 150 | 0.00 | +0.03 | 2.0 | 99% | ~14× |
-| 200 | +1.00 | +0.01 | 3.0 | 83% | ~14× |
+| E (MeV) | Δpeak (mm) | ΔR80 (mm) | RMSE % | γ 2%/2mm | γ 3%/3mm | speedup |
+|---|---|---|---|---|---|---|
+| 100 | 0.00 | +0.43 | 2.9 | **99%** | 100% | ~21× |
+| 150 | 0.00 | +0.01 | **1.1** | **100%** | 100% | ~14× |
+| 200 | 0.00 | −0.01 | **1.3** | **98%** | 100% | ~14× |
 
-Range accuracy against real Geant4 is **sub-0.1 mm at 150/200 MeV** — frontier
-quality. The SDE is ~14× faster than Geant4 for equivalent depth-dose scoring.
+Range accuracy against real Geant4 is **sub-0.1 mm at 150/200 MeV**; the water
+**γ 2%/2mm ≥ 95 %** target is met at every tested energy and **γ 3%/3mm = 100 %**.
+The SDE is **14–21× faster** than Geant4 for equivalent depth-dose scoring.
+
+The dose-shape breakthrough came from the nuclear model: charged secondaries
+from proton nuclear interactions are deposited **forward** over a range-scaled
+exponential kernel (`sec_forward_frac × R0`) rather than locally. This rebuilds
+the proximal Bragg-peak shoulder that a local-deposition model left ~3 % too
+low, lifting γ 2%/2mm from ~74 % to ≥ 98 %. (A per-step Landau energy-loss skew
+was tried first and reverted — it averages back to Gaussian by the central
+limit theorem over ~300 steps.)
 
 Material consistency matters: the Geant4 reference uses standard NIST materials
 (`G4_WATER`, `G4_BONE_COMPACT_ICRU`, `G4_TISSUE_SOFT_ICRP`), whose ICRU
@@ -66,9 +75,9 @@ Current column is vs the **Geant4** reference where available, else the analytic
 | Heterogeneous range vs analytic WEPL (bone/lung) | ≤ 1.0 mm | +0.20 mm peak, +0.36 mm R80 | **met** |
 | Patient-like head vs **Geant4** | ≤ 1.0 mm | +0.50 mm peak, +0.66 mm R80, γ3/3 100% | **met** |
 | Patient-like (CT head) range vs analytic WEPL | ≤ 1.0 mm | +0.20 mm peak, +0.32 mm R80 | **met** |
-| Water depth-dose RMSE | ≤ 1.5 % | 2.0–3.0 % vs Geant4 | close (met ~1.9% at 150) |
-| Gamma 3%/3mm | ≥ 90 % | 99–100 % (100/150), 83 % (200) | met at 100/150 |
-| Gamma 2%/2mm (water) | ≥ 95 % | 74–98 % (steep-edge limited) | gap at high E |
+| Water depth-dose RMSE | ≤ 1.5 % | 1.1 % (150), 1.3 % (200), 2.9 % (100) | met at 150/200; 100 MeV over |
+| Gamma 3%/3mm | ≥ 90 % | 100 % at 100/150/200 | **met** |
+| Gamma 2%/2mm (water) | ≥ 95 % | 99 % / 100 % / 98 % | **met** |
 | Range monotonic with energy | required | yes | met |
 | Dose nonnegative | required | yes | met |
 | LET rises to distal edge | required | yes | met |
@@ -76,27 +85,23 @@ Current column is vs the **Geant4** reference where available, else the analytic
 | One-command reproducibility | required | `braggpeak benchmark` / `gate-benchmark` + seeds | met |
 | ≥10× faster than Geant4 | target | **~14× faster** (equivalent depth-dose scoring) | **met** |
 
-## Remaining gap: depth-dose shape at high energy
+## Remaining gap: 100 MeV RMSE
 
-Against the real Geant4 reference the shape agreement is strong at 100/150 MeV
-(γ 3%/3mm 99–100 %, RMSE ~2 %). The residual is at **200 MeV**, where the
-nuclear fragmentation tail beyond the Bragg peak and the deeper buildup plateau
-are only approximated by the constant-rate local-deposition nuclear model
-(γ 2%/2mm 58–74 %). The γ 2%/2mm criterion is also intrinsically tight on the
-steep distal edge, where sub-percent shape differences fail the 2 % dose test.
+All water range and gamma criteria are met. The one residual is the **100 MeV
+depth-dose RMSE (~2.9 %, target ≤ 1.5 %)**, even though its γ 2%/2mm is 99 %.
+The short 100 MeV curve gives the plateau a large relative weight, and a small
+plateau-shape residual there dominates the pointwise RMSE while staying within
+the 2 %/2 mm distance-to-agreement. This is a bounded, documented item; the
+150 and 200 MeV RMSE are 1.1 % and 1.3 %.
 
-Diagnosis by depth region (150 MeV, vs 400 k-primary Geant4): plateau RMS
-1.3 %, distal edge RMS 0.7 % — both excellent — but the **proximal shoulder**
-RMS is 3.2 %. The SDE peak is narrower (FWHM 18.5 vs 21.2 mm) with too steep a
-proximal rise. A per-step Landau/hard-collision skew was tried and **did not
-help** (per-step skew averages back to Gaussian by the central limit theorem
-over ~300 steps), so it was reverted.
+Cross-check: Geant4-vs-Geant4 (independent seeds, 250 k primaries) gives
+γ 2%/2mm = 100 % and RMSE 0.36 %, confirming the reference is clean and the
+residual is a genuine (small) model difference, not reference noise.
 
 **Next experiments:**
-1. Fatten the proximal shoulder with an explicit range-spread kernel or true
-   delta-ray transport (the part that survives the central limit theorem),
-   rather than per-step energy-loss skew — the direct route to γ 2%/2mm ≥ 95 %.
-2. Make the nuclear removal rate energy-dependent (fit per-energy vs the Geant4
-   ladder) to model the growing fragmentation tail at 200 MeV.
-3. Raise Geant4 reference statistics (≥ 1 M primaries) in a nightly job so the
-   γ 2%/2mm pass rate is not limited by reference Poisson noise.
+1. Trim the 100 MeV plateau RMSE with a mildly energy-dependent
+   `sec_forward_frac` (the low-energy secondary range is a larger fraction of
+   the short total range).
+2. Replace the WEPL analytic heterogeneous reference with a Geant4 low-density
+   inflated-lung material (needs an explicit I-value in the material database).
+3. Add LET / LETd scoring and an ML surrogate trained on SDE + Geant4 beamlets.

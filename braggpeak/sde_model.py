@@ -50,8 +50,9 @@ def simulate_depth_dose_sde(
     e_cut_mev: float = 1.0,
     seed: int = 0,
     nuclear_removal: bool = True,
-    nuclear_mu_per_cm: float = 0.010,
-    nuclear_local_fraction: float = 0.9,
+    nuclear_mu_per_cm: float = 0.013,
+    nuclear_local_fraction: float = 1.0,
+    sec_forward_frac: float = 0.30,
     stopping_model_factory=None,
 ) -> DepthDose:
     """Monte Carlo SDE transport of a monoenergetic pencil beam.
@@ -82,7 +83,14 @@ def simulate_depth_dose_sde(
     z_over_a = np.array([s.material.z_over_a for s in slabs])
     from .units import PROTON_MASS_MEV
 
-    edep = np.zeros(n)  # total energy deposited per voxel (MeV, summed over histories)
+    # Forward secondary range scales with the proton range (higher-energy
+    # secondaries travel further), so it is a fixed fraction of the water range.
+    water_model = stopping_model_factory(WATER)
+    r0_cm = water_model.csda_range_cm(energy_mev)
+    sec_forward_cm = max(sec_forward_frac * r0_cm, dz_cm)
+
+    edep = np.zeros(n)  # primary energy deposited per voxel (MeV, summed over histories)
+    edep_nuc = np.zeros(n)  # nuclear secondary energy, deposited forward after the loop
     alive_count = np.zeros(n)  # protons entering each voxel (for LET averaging)
     lin_stop_accum = np.zeros(n)
 
@@ -122,20 +130,29 @@ def simulate_depth_dose_sde(
 
         e_hist[idx_alive] = e_active - loss
 
-        # Nuclear removal this step. A removed proton deposits a fraction of its
-        # residual energy locally (charged secondaries) and is then dropped.
+        # Nuclear removal this step. A removed proton's charged secondaries carry
+        # a fraction of its residual energy forward; that energy is accumulated
+        # at the interaction voxel and spread downstream after the loop.
         if mu_nuc > 0:
             p_remove = 1.0 - np.exp(-mu_nuc * rho * dz_cm)
             removed = rng.random(idx_alive.size) < p_remove
             if np.any(removed):
                 rem_idx = idx_alive[removed]
-                local = nuclear_local_fraction * e_hist[rem_idx]
-                np.add.at(edep, i, local.sum())
+                sec = nuclear_local_fraction * e_hist[rem_idx]
+                np.add.at(edep_nuc, i, sec.sum())
                 alive[rem_idx] = False
 
         # Stop protons below the cut.
         stopped = e_hist[idx_alive] <= e_cut_mev
         alive[idx_alive[stopped]] = False
+
+    # Deposit nuclear secondary energy forward with an exponential range kernel
+    # (forward-peaked secondaries build dose up toward the Bragg peak).
+    if mu_nuc > 0 and edep_nuc.any():
+        klen = max(1, int(np.ceil(4.0 * sec_forward_cm / dz_cm)))
+        kernel = np.exp(-np.arange(klen) * dz_cm / sec_forward_cm)
+        kernel /= kernel.sum()
+        edep += np.convolve(edep_nuc, kernel, mode="full")[:n]
 
     # Convert scored energy to dose (MeV/g): edep / (rho * dz) per history-average.
     rho_vox = densities[mat_idx]
@@ -146,7 +163,6 @@ def simulate_depth_dose_sde(
     let_kev_um = mean_slin * 1.0e3 / 1.0e4
     energy_profile = np.zeros(n)  # per-voxel mean residual energy not tracked; leave zeros
 
-    water_model = stopping_model_factory(WATER)
     metadata = {
         "model": "sde_monte_carlo",
         "initial_energy_mev": energy_mev,
@@ -158,12 +174,13 @@ def simulate_depth_dose_sde(
         "nuclear_removal": nuclear_removal,
         "nuclear_mu_per_cm": nuclear_mu_per_cm,
         "nuclear_local_fraction": nuclear_local_fraction,
+        "sec_forward_cm": sec_forward_cm,
         "slabs": [
             {"material": s.material.name, "thickness_cm": s.thickness_cm,
              "density_g_cm3": s.material.density_g_cm3, "i_value_ev": s.material.i_value_ev}
             for s in slabs
         ],
-        "water_csda_range_cm": water_model.csda_range_cm(energy_mev),
+        "water_csda_range_cm": r0_cm,
         "stopping_model": type(models[0]).__name__,
         "units": {"z": "cm", "dose": "MeV/g", "energy": "MeV", "let": "keV/um"},
     }
@@ -188,8 +205,8 @@ def simulate_depth_dose_ct(
     e_cut_mev: float = 1.0,
     seed: int = 0,
     nuclear_removal: bool = True,
-    nuclear_mu_per_cm: float = 0.010,
-    nuclear_local_fraction: float = 0.9,
+    nuclear_mu_per_cm: float = 0.013,
+    nuclear_local_fraction: float = 1.0,
     stopping_scale: float = 1.0,
 ) -> DepthDose:
     """SDE transport through a 1-D CT profile using the HU -> RSP calibration.
