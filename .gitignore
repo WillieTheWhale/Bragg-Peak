@@ -11,3 +11,9 @@ benchmarks/**/artifacts/
 build/
 dist/
 experiments/output/
+data/generated/
+experiments/bt/
+*.h5
+*.pt
+codex_logs/
+CODEX_SMOKE.txt
