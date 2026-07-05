@@ -63,19 +63,28 @@ def compute_loss(outputs: dict[str, Tensor], batch: dict[str, Tensor], train_cfg
     z = batch["z"].to(device=dose_pred.device, dtype=dose_pred.dtype)
     r80_target = batch["r80"].to(device=dose_pred.device, dtype=dose_pred.dtype).view(-1)
 
+    # NaN-safe: a single sample with an undefined R80 (or non-finite target) must
+    # not poison the whole batch loss. Mask non-finite entries out of each term.
+    r80_finite = torch.isfinite(r80_target)
+    r80_safe = torch.nan_to_num(r80_target, nan=0.0, posinf=0.0, neginf=0.0)
+
     weights = torch.ones_like(dose_target)
-    proximal = (z >= (r80_target[:, None] - 2.0)) & (z <= r80_target[:, None])
+    proximal = (z >= (r80_safe[:, None] - 2.0)) & (z <= r80_safe[:, None]) & r80_finite[:, None]
     weights = torch.where(proximal, torch.full_like(weights, float(train_cfg.distal_edge_weight)), weights)
-    dose_loss = (weights * (dose_pred - dose_target).square()).mean()
+    dose_valid = torch.isfinite(dose_target)
+    sq = torch.where(dose_valid, (dose_pred - dose_target).square(), torch.zeros_like(dose_target))
+    dose_loss = (weights * sq).sum() / weights[dose_valid].sum().clamp_min(1.0)
 
     letd_loss = dose_loss.new_tensor(0.0)
     if "letd" in outputs and "letd" in batch:
         letd_target = batch["letd"].to(device=dose_pred.device, dtype=dose_pred.dtype)
-        letd_loss = F.mse_loss(outputs["letd"], letd_target)
+        letd_valid = torch.isfinite(letd_target)
+        if letd_valid.any():
+            letd_loss = F.mse_loss(outputs["letd"][letd_valid], letd_target[letd_valid])
 
     r80_loss = dose_loss.new_tensor(0.0)
-    if "r80" in outputs:
-        r80_loss = F.smooth_l1_loss(outputs["r80"].view(-1), r80_target)
+    if "r80" in outputs and r80_finite.any():
+        r80_loss = F.smooth_l1_loss(outputs["r80"].view(-1)[r80_finite], r80_target[r80_finite])
 
     total = dose_loss + letd_loss + r80_loss
     return total, {
@@ -314,7 +323,13 @@ def _set_determinism(seed: int) -> None:
     torch.manual_seed(seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
-    torch.use_deterministic_algorithms(True, warn_only=True)
+    # Do NOT force deterministic algorithms on Apple MPS: several backward kernels
+    # (e.g. LayerNorm, gather-based interpolation) have no deterministic MPS
+    # implementation and, with warn_only=True, silently emit NaN gradients instead
+    # of erroring — which poisons training from epoch 1. Seeds above already give
+    # reproducible runs; deterministic algorithms are only enabled off-MPS.
+    if not torch.backends.mps.is_available():
+        torch.use_deterministic_algorithms(True, warn_only=True)
 
 
 def _param_count(model: nn.Module) -> int:

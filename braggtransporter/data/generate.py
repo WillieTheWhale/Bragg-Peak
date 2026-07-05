@@ -118,6 +118,12 @@ def _sample_to_row(sample) -> dict[str, Any]:
 
 
 def _write_split(group: h5py.Group, rows: list[dict[str, Any]]) -> None:
+    # Drop samples with an undefined R80 or non-finite dose (rare degenerate
+    # geometries) so they can't pollute training/eval. Keep this loud.
+    n_in = len(rows)
+    rows = [r for r in rows if np.isfinite(r["r80"]) and np.all(np.isfinite(r["dose"]))]
+    if len(rows) != n_in:
+        print(f"[generate] {group.name}: dropped {n_in - len(rows)} sample(s) with non-finite R80/dose")
     if not rows:
         raise ValueError(f"Split {group.name!r} has no rows.")
     for key in ("x", "scalars", "material_profile", "prior", "z", "dose", "letd"):

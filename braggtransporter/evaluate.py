@@ -88,15 +88,17 @@ def load_model(ckpt_path: Path, device_name: str = "auto") -> Any:
         model = ckpt["model"]
     elif isinstance(ckpt, dict):
         model_name = _checkpoint_model_name(ckpt, ckpt_path.stem)
-        spec = MODEL_REGISTRY.get(model_name, model_name if ":" in model_name else "")
-        if not spec:
-            raise ValueError(f"Cannot infer model class for checkpoint {ckpt_path}.")
-        cls = _import_object(spec)
-        kwargs = _model_kwargs(ckpt)
-        try:
-            model = cls(**kwargs)
-        except TypeError:
-            model = cls(ModelConfig(**{k: v for k, v in kwargs.items() if hasattr(ModelConfig, k)}))
+        # Reuse the trainer's single source of truth for construction, so eval
+        # cannot drift from how each model was actually built during training.
+        from braggtransporter.train import build_model
+
+        cfg = ckpt.get("config")
+        saved_model_cfg = cfg.get("model") if isinstance(cfg, dict) else None
+        model_config = ModelConfig(**saved_model_cfg) if isinstance(saved_model_cfg, dict) else ModelConfig()
+        canonical = model_name if model_name in ("mlp", "fno1d", "dota", "braggtransporter_v0") else {
+            "v0": "braggtransporter_v0", "fno": "fno1d", "dota_transformer": "dota",
+        }.get(model_name, model_name)
+        model = build_model(canonical, model_config)
         state = _state_dict(ckpt)
         if state is None:
             raise ValueError(f"Checkpoint {ckpt_path} does not contain a model state_dict.")

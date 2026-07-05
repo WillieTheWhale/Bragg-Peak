@@ -172,13 +172,21 @@ class BraggTransporterV0(nn.Module):
 
     @staticmethod
     def _interpolate_latent(depth_latent: Tensor, coords: Tensor) -> Tensor:
-        batch, _, _ = depth_latent.shape
-        x_grid = coords.mul(2.0).sub(1.0)
-        y_grid = torch.zeros_like(x_grid)
-        grid = torch.stack([x_grid, y_grid], dim=-1).unsqueeze(1)
-        latent = depth_latent.transpose(1, 2).unsqueeze(2)
-        sampled = F.grid_sample(latent, grid, mode="bilinear", padding_mode="border", align_corners=True)
-        return sampled.squeeze(2).transpose(1, 2).reshape(batch, coords.shape[1], -1)
+        batch, nz, channels = depth_latent.shape
+        if coords.shape[0] != batch:
+            raise ValueError(f"coords must have batch dimension {batch}, got {tuple(coords.shape)}")
+
+        position = coords.clamp(0.0, 1.0) * max(nz - 1, 0)
+        lower_idx = position.floor().to(dtype=torch.long).clamp(0, max(nz - 1, 0))
+        upper_idx = (lower_idx + 1).clamp(0, max(nz - 1, 0))
+        upper_weight = (position - lower_idx.to(dtype=position.dtype)).unsqueeze(-1)
+        lower_weight = 1.0 - upper_weight
+
+        gather_lower = lower_idx.unsqueeze(-1).expand(-1, -1, channels)
+        gather_upper = upper_idx.unsqueeze(-1).expand(-1, -1, channels)
+        lower = torch.gather(depth_latent, dim=1, index=gather_lower)
+        upper = torch.gather(depth_latent, dim=1, index=gather_upper)
+        return lower.mul(lower_weight) + upper.mul(upper_weight)
 
 
 def _model_params(cfg: ModelConfig | dict[str, Any] | None) -> dict[str, Any]:

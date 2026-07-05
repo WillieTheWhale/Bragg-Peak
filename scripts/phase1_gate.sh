@@ -14,8 +14,12 @@ $PY -m pytest tests/test_bt_data.py tests/test_bt_models_baseline.py \
               tests/test_bt_v0.py tests/test_bt_metrics.py -q
 
 echo "== 2. generate 1-D dataset =="
-$PY -m braggtransporter.data.generate --config configs/bt_v0_1d.yaml || \
-$PY -m braggtransporter.data.generate
+# Phase-1 Stage A predicts the SMOOTH MEAN, so it trains on clean (analytic)
+# targets; the stochastic SDE residual is the Phase-4 flow head's job. Clean
+# targets also isolate the architecture claim (sharp distal edge) from noise.
+NGEO="${NGEO:-40}"; FID="${FID:-analytic}"; NHIST="${NHIST:-4000}"
+$PY -m braggtransporter.data.generate --out "$DATA" \
+    --n-geometries "$NGEO" --n-histories "$NHIST" --fidelity "$FID"
 
 echo "== 3. train v0 + baselines =="
 for m in braggtransporter_v0 mlp fno1d dota; do
@@ -48,12 +52,19 @@ s = json.loads(pathlib.Path("experiments/bt/eval/summary.json").read_text())
 # summary.json is a list of rows; keep aggregate rows, key by model
 agg = {}
 rows = s if isinstance(s, list) else s.get("summary", [])
+import math
+def _num(v):
+    try:
+        f = float(v)
+        return 1e9 if math.isnan(f) else f   # nan edge = model can't form a findable Bragg peak = worst
+    except Exception:
+        return 1e9
 for r in rows:
     if str(r.get("energy", r.get("energy_mev", ""))) in ("aggregate", "") or r.get("aggregate"):
-        agg[r["model"]] = float(r["distal_edge_error_mm_mean"])
+        agg[r["model"]] = _num(r["distal_edge_error_mm_mean"])
 if not agg:  # fallback: any row per model
     for r in rows:
-        agg.setdefault(r["model"], float(r.get("distal_edge_error_mm_mean", r.get("distal_edge_error_mm", "nan"))))
+        agg.setdefault(r["model"], _num(r.get("distal_edge_error_mm_mean", r.get("distal_edge_error_mm", "nan"))))
 print("distal_edge_error_mm (held-out mean):")
 for k, v in sorted(agg.items(), key=lambda kv: kv[1]):
     print(f"  {k:24s} {v:.3f} mm")
