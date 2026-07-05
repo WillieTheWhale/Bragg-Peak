@@ -34,7 +34,25 @@ each phase is gated (tests + metrics pass) before the next begins.
       fixed-grid** at the distal edge; (3) **distal-edge weighting** lowers edge error
       (trades ~1% aggregate gamma). Best config = v0's defaults → design validated.
       Results: `docs/results/phase2a.csv`.
-- [ ] **Phase 2B — Backbone ablation** (transformer vs FNO vs Mamba, matched budget).
+- [x] **Phase 2B — Backbone ablation** (transformer vs FNO vs Mamba). Held-out
+      energies, MPS-trained. Distal-edge / gamma / RMSE:
+      | backbone | params | γ2%/2mm | RMSE% | distal-edge |
+      |---|---|---|---|---|
+      | v0 (transformer) | 944k | **95.4%** | **1.14** | 0.172 mm |
+      | FNO1d | 596k | 91.4% | 1.28 | **0.156 mm** |
+      | Mamba1d | 963k | 0.0%* | 21.5* | 1.02 mm* |
+      **Honest findings:** (1) on *clean analytic 1-D* data the transformer leads on
+      overall shape (gamma, RMSE) while FNO is marginally better on the *raw* distal
+      edge; combined with Phase 1 (v0 0.111 < FNO 0.120), the v0/FNO edge gap is
+      within run-to-run noise on smooth data — the transformer's edge advantage is
+      expected to emerge on *sharper/heterogeneous/noisy* targets (Phase 4 flow head,
+      heterogeneity), NOT clean ones. This refines rather than confirms the
+      transformer-vs-operator memo. (2) *Mamba is computationally intractable* at
+      Nz=680 without a fused kernel (~2.4 min/epoch vs ~5s for v0/FNO, ~30x); it was
+      under-trained here (*asterisked* rows) — a practical finding against unfused
+      sequential-SSM backbones on this hardware. Caveat: FNO ran at its default 596k
+      params (not param-matched to v0's 944k). Results: `docs/results/phase2b_summary.csv`.
+- [ ] **Phase 3 — Physics prior + multi-task heads + Stage-0 masked pretraining.**
 - [ ] **Phase 3 — Physics prior + multi-task heads + Stage-0 masked pretraining.**
 - [ ] **Phase 4 — Decomposed uncertainty + calibration.**
 - [ ] **Phase 5 — 3-D lift + DoseRAD2026 train/val.**
