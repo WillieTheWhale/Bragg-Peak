@@ -26,7 +26,14 @@ each phase is gated (tests + metrics pass) before the next begins.
       - Honest note: on *clean analytic* targets FNO is competitive (0.120 vs 0.111 mm);
         the v0/FNO distal-edge gap is expected to widen on sharper/noisier targets
         (heterogeneous slabs, SDE residuals) — a Phase-2/4 follow-up.
-- [ ] **Phase 2A — Representation ablation** (fixed-grid vs coord-query; prior vs none).
+- [x] **Phase 2A — Representation ablation** (8 configs, held-out energies, MPS).
+      Ranked by distal-edge error (mm): cq+prior+weighted **0.165** > fg+prior+weighted
+      0.189 > cq+prior+uniform 0.217 > fg+prior+uniform 0.302 >> all prior-OFF (NaN
+      edge, ~16% gamma). Conclusions: (1) **physics prior is essential** — removing it
+      collapses the model (can't localize the peak, gamma 16%); (2) **coord-query beats
+      fixed-grid** at the distal edge; (3) **distal-edge weighting** lowers edge error
+      (trades ~1% aggregate gamma). Best config = v0's defaults → design validated.
+      Results: `docs/results/phase2a.csv`.
 - [ ] **Phase 2B — Backbone ablation** (transformer vs FNO vs Mamba, matched budget).
 - [ ] **Phase 3 — Physics prior + multi-task heads + Stage-0 masked pretraining.**
 - [ ] **Phase 4 — Decomposed uncertainty + calibration.**
