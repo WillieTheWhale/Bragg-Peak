@@ -1,0 +1,2 @@
+patients,max_beamlets,epochs,depth_size,lateral_size,gamma3d_3pct_3mm,rmse_pct,r80_error_mm,n_val_beamlets
+1ABB006,49,30,48,16,0.0,26.914827860821447,105.09763293284237,12.0
