@@ -58,7 +58,11 @@ each phase is gated (tests + metrics pass) before the next begins.
       **Held-out dose metrics IMPROVED vs dose-only:** γ **96.35%**, distal-edge
       **0.132 mm**, RMSE **0.98%** — multi-task learning did not degrade dose.
       **LETd validation** vs braggpeak reference: Pearson r **0.76**, MAE 0.094 keV/µm.
-      Results: `docs/results/phase3_letd.csv`. Stage-0 data-efficiency study running.
+      Results: `docs/results/phase3_letd.csv`.
+      **Stage-0 masked pretraining: honest negative result** — does NOT improve data
+      efficiency by paired held-out criteria (25/50/100% × ±Stage-0). Supervised
+      signal already strong in this regime; best config was full-data (edge 0.100mm,
+      γ 97.25%) with or without Stage-0. Kept as a documented null finding.
       Minor follow-up: ensure all secondary heads enforce nonnegativity at init.
 - [ ] **Phase 4 — Decomposed uncertainty + calibration.**
 - [ ] **Phase 5 — 3-D lift + DoseRAD2026 train/val.**
