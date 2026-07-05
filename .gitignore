@@ -18,3 +18,4 @@ experiments/bt/
 codex_logs/
 CODEX_SMOKE.txt
 configs/_*.yaml
+data/doserad2026/
