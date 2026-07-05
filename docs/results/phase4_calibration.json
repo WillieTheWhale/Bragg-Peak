@@ -1,0 +1,41 @@
+{
+  "checkpoint": "experiments/bt/phase3/braggtransporter_v0/best.pt",
+  "data": "data/generated/phase1_1d.h5",
+  "epochs": 2,
+  "head": "heteroscedastic",
+  "history": [
+    {
+      "epoch": 1,
+      "train_loss": 33.2412379582723,
+      "val_loss": 1.7855368852615356
+    },
+    {
+      "epoch": 2,
+      "train_loss": 2.0886194308598838,
+      "val_loss": 1.8591210842132568
+    }
+  ],
+  "identifiability": {
+    "sigma_MC": "requires low/high-stat MC pairs with known histories",
+    "sigma_aleatoric": "residual head trained on target - frozen v0 mean",
+    "sigma_epistemic": "requires an ensemble of independently trained v0 checkpoints",
+    "sigma_input": "requires controlled CT/RSP/SPR perturbation ensembles",
+    "sigma_meas": "requires paired MC-vs-measurement residuals and detector metadata"
+  },
+  "script": "scripts/phase4_uncertainty.py",
+  "seed": 0,
+  "summary": {
+    "coverage_68": 0.4270833333333333,
+    "coverage_68_within_5pct": false,
+    "coverage_95": 1.0,
+    "coverage_95_within_5pct": false,
+    "sharpness_mean_sigma": 5.739157266087002,
+    "sharpness_median_sigma": 6.1273839473724365
+  },
+  "units": {
+    "depth": "cm",
+    "dose": "MeV/g per voxel",
+    "energy": "MeV",
+    "sigma": "MeV/g per voxel"
+  }
+}
