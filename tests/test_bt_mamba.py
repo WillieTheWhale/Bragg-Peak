@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import copy
+
 import pytest
 import torch
 
@@ -32,6 +34,45 @@ def _small_model() -> Mamba1d:
             extra={"d_state": 8, "expand": 2, "dt_rank": 8},
         )
     )
+
+
+def _loss(out: dict[str, torch.Tensor]) -> torch.Tensor:
+    return out["dose"].mean() + out["letd"].square().mean() + out["r80"].mean()
+
+
+def test_mamba1d_fast_scan_matches_reference_forward_and_grads() -> None:
+    torch.manual_seed(34)
+    fast = _small_model()
+    reference = copy.deepcopy(fast)
+    for block in reference.blocks:
+        block._scan = block._scan_reference  # type: ignore[method-assign]
+
+    x, scalars = _inputs(batch=2, nz=128)
+    x_fast = x.clone().detach().requires_grad_(True)
+    scalars_fast = scalars.clone().detach().requires_grad_(True)
+    x_ref = x.clone().detach().requires_grad_(True)
+    scalars_ref = scalars.clone().detach().requires_grad_(True)
+
+    out_fast = fast(x_fast, scalars_fast)
+    out_ref = reference(x_ref, scalars_ref)
+
+    output_diff = max((out_fast[key] - out_ref[key]).abs().max().item() for key in out_fast)
+    assert output_diff <= 1.0e-4
+
+    _loss(out_fast).backward()
+    _loss(out_ref).backward()
+
+    grad_diffs = [
+        (x_fast.grad - x_ref.grad).abs().max().item(),
+        (scalars_fast.grad - scalars_ref.grad).abs().max().item(),
+    ]
+    for fast_param, ref_param in zip(fast.parameters(), reference.parameters(), strict=True):
+        assert fast_param.grad is not None
+        assert ref_param.grad is not None
+        grad_diffs.append((fast_param.grad - ref_param.grad).abs().max().item())
+
+    assert max(grad_diffs) <= 1.0e-4
+    assert all(torch.isfinite(grad).all().item() for grad in [x_fast.grad, scalars_fast.grad])
 
 
 def test_mamba1d_forward_shapes_nonnegative_dose_and_param_budget() -> None:

@@ -19,8 +19,11 @@ from braggtransporter.config import ModelConfig
 from braggtransporter.schema import C_IN_PERDEPTH, C_SCALAR
 
 
+_SCAN_CHUNK_SIZE = 64
+
+
 class SelectiveSSMBlock1d(nn.Module):
-    """One Mamba-style block with an explicit selective SSM scan over depth."""
+    """One Mamba-style block with a selective SSM scan over depth."""
 
     def __init__(
         self,
@@ -104,8 +107,86 @@ class SelectiveSSMBlock1d(nn.Module):
             if tuple(state.shape) != expected:
                 raise ValueError(f"initial_state must have shape {expected}, got {tuple(state.shape)}")
 
+        y, state = self._scan(delta, u, a_select, b_select, c_select, a, d_skip, state)
+        y = self.out_proj(y * torch.sigmoid(gate))
+        x = residual + self.dropout(y)
+        x = x + self.dropout(self.ff(self.ff_norm(x)))
+        return x, state
+
+    def _scan(
+        self,
+        delta: Tensor,
+        u: Tensor,
+        a_select: Tensor,
+        b_select: Tensor,
+        c_select: Tensor,
+        a: Tensor,
+        d_skip: Tensor,
+        initial_state: Tensor,
+    ) -> tuple[Tensor, Tensor]:
+        """Chunked associative prefix scan for diagonal affine SSM updates."""
+
+        nz = delta.shape[1]
+        state = initial_state
         outputs: list[Tensor] = []
-        for idx in range(nz):
+        for start in range(0, nz, _SCAN_CHUNK_SIZE):
+            stop = min(start + _SCAN_CHUNK_SIZE, nz)
+            delta_chunk = delta[:, start:stop, :]
+            u_chunk = u[:, start:stop, :]
+            a_select_chunk = a_select[:, start:stop, :]
+            b_select_chunk = b_select[:, start:stop, :]
+            c_select_chunk = c_select[:, start:stop, :]
+
+            decay = torch.exp(
+                delta_chunk.unsqueeze(-1) * a.unsqueeze(0).unsqueeze(0) * a_select_chunk.unsqueeze(2)
+            )
+            drive = delta_chunk.unsqueeze(-1) * b_select_chunk.unsqueeze(2) * u_chunk.unsqueeze(-1)
+            prefix_decay, prefix_drive = self._affine_prefix_scan(decay, drive)
+
+            states = prefix_decay * state.unsqueeze(1) + prefix_drive
+            y_chunk = (states * c_select_chunk.unsqueeze(2)).sum(dim=-1)
+            y_chunk = y_chunk + d_skip.unsqueeze(0).unsqueeze(0) * u_chunk
+            outputs.append(y_chunk)
+            state = states[:, -1, :, :]
+
+        return torch.cat(outputs, dim=1), state
+
+    def _affine_prefix_scan(self, decay: Tensor, drive: Tensor) -> tuple[Tensor, Tensor]:
+        """Inclusive prefix scan of affine transforms h -> decay * h + drive."""
+
+        prefix_decay = decay
+        prefix_drive = drive
+        step = 1
+        while step < decay.shape[1]:
+            right_decay = prefix_decay[:, step:, :, :]
+            right_drive = prefix_drive[:, step:, :, :]
+            left_decay = prefix_decay[:, :-step, :, :]
+            left_drive = prefix_drive[:, :-step, :, :]
+
+            scanned_decay = right_decay * left_decay
+            scanned_drive = right_drive + right_decay * left_drive
+            prefix_decay = torch.cat((prefix_decay[:, :step, :, :], scanned_decay), dim=1)
+            prefix_drive = torch.cat((prefix_drive[:, :step, :, :], scanned_drive), dim=1)
+            step *= 2
+
+        return prefix_decay, prefix_drive
+
+    def _scan_reference(
+        self,
+        delta: Tensor,
+        u: Tensor,
+        a_select: Tensor,
+        b_select: Tensor,
+        c_select: Tensor,
+        a: Tensor,
+        d_skip: Tensor,
+        initial_state: Tensor,
+    ) -> tuple[Tensor, Tensor]:
+        """Original sequential scan, retained for numerical equivalence tests."""
+
+        state = initial_state
+        outputs: list[Tensor] = []
+        for idx in range(delta.shape[1]):
             delta_t = delta[:, idx, :]
             u_t = u[:, idx, :]
             a_t = a.unsqueeze(0) * a_select[:, idx, :].unsqueeze(1)
@@ -118,11 +199,7 @@ class SelectiveSSMBlock1d(nn.Module):
             y_t = (state * c_t.unsqueeze(1)).sum(dim=-1) + d_skip.unsqueeze(0) * u_t
             outputs.append(y_t)
 
-        y = torch.stack(outputs, dim=1)
-        y = self.out_proj(y * torch.sigmoid(gate))
-        x = residual + self.dropout(y)
-        x = x + self.dropout(self.ff(self.ff_norm(x)))
-        return x, state
+        return torch.stack(outputs, dim=1), state
 
 
 class Mamba1d(nn.Module):
