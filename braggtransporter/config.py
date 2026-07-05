@@ -51,6 +51,8 @@ class TrainConfig:
     out_dir: str = "experiments/bt"
     grad_clip: float = 1.0
     amp: bool = False                   # MPS autocast is fragile; default off
+    constraint_weight: float = 0.0       # soft energy-budget penalty; opt-in only
+    monotonic_range_weight: float = 0.0  # soft dR80/dE >= 0 penalty; opt-in only
 
 
 @dataclass

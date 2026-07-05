@@ -87,13 +87,111 @@ def compute_loss(outputs: dict[str, Tensor], batch: dict[str, Tensor], train_cfg
     if "r80" in outputs and r80_finite.any():
         r80_loss = F.smooth_l1_loss(outputs["r80"].view(-1)[r80_finite], r80_target[r80_finite])
 
-    total = dose_loss + letd_loss + r80_loss
+    monotonic_range_loss = _monotonic_range_loss(outputs, batch, dose_loss)
+    energy_budget_loss = _energy_budget_loss(dose_pred, batch)
+
+    monotonic_term = dose_loss.new_tensor(0.0)
+    if train_cfg.monotonic_range_weight > 0.0:
+        monotonic_term = float(train_cfg.monotonic_range_weight) * monotonic_range_loss
+
+    energy_budget_term = dose_loss.new_tensor(0.0)
+    if train_cfg.constraint_weight > 0.0:
+        energy_budget_term = float(train_cfg.constraint_weight) * energy_budget_loss
+
+    total = dose_loss + letd_loss + r80_loss + monotonic_term + energy_budget_term
     return total, {
         "loss": float(total.detach().cpu()),
         "dose_loss": float(dose_loss.detach().cpu()),
         "letd_loss": float(letd_loss.detach().cpu()),
         "r80_loss": float(r80_loss.detach().cpu()),
+        "monotonic_range_loss": float(monotonic_term.detach().cpu()),
+        "energy_budget_loss": float(energy_budget_term.detach().cpu()),
     }
+
+
+def _monotonic_range_loss(outputs: dict[str, Tensor], batch: dict[str, Tensor], like: Tensor) -> Tensor:
+    """Pairwise hinge loss for the soft physical prior dR80/dE >= 0."""
+
+    if "r80" not in outputs:
+        return like.new_tensor(0.0)
+    r80 = outputs["r80"].view(-1)
+    if "energy_mev" in batch:
+        energy = batch["energy_mev"].to(device=r80.device, dtype=r80.dtype).view(-1)
+    else:
+        energy = batch["scalars"].to(device=r80.device, dtype=r80.dtype)[:, 0].view(-1)
+    if r80.numel() < 2 or energy.numel() != r80.numel():
+        return like.new_tensor(0.0)
+
+    finite = torch.isfinite(r80) & torch.isfinite(energy)
+    if finite.sum() < 2:
+        return like.new_tensor(0.0)
+    r80 = r80[finite]
+    energy = energy[finite]
+    higher_energy = energy[:, None] > energy[None, :]
+    if not bool(higher_energy.any()):
+        return like.new_tensor(0.0)
+    violations = F.relu(r80[None, :] - r80[:, None])
+    return violations[higher_energy].square().mean()
+
+
+def _energy_budget_loss(dose_pred: Tensor, batch: dict[str, Tensor]) -> Tensor:
+    """One-sided soft energy budget: predicted deposited energy should not exceed incident energy."""
+
+    if "z" not in batch:
+        return dose_pred.new_tensor(0.0)
+    z = batch["z"].to(device=dose_pred.device, dtype=dose_pred.dtype)
+    if z.ndim == 1:
+        z = z.unsqueeze(0).expand_as(dose_pred)
+    if z.shape != dose_pred.shape:
+        return dose_pred.new_tensor(0.0)
+
+    incident = _incident_energy_mev(batch, dose_pred.device, dose_pred.dtype)
+    if incident.numel() != dose_pred.shape[0]:
+        return dose_pred.new_tensor(0.0)
+
+    dz = _cell_widths_cm(z)
+    density = _physical_density_or_ones(batch["x"].to(device=dose_pred.device, dtype=dose_pred.dtype)[..., 0])
+    deposit_mev = torch.sum(torch.nan_to_num(dose_pred, nan=0.0, posinf=0.0, neginf=0.0) * density * dz, dim=1)
+
+    valid = torch.isfinite(deposit_mev) & torch.isfinite(incident) & (incident > 0.0)
+    if not bool(valid.any()):
+        return dose_pred.new_tensor(0.0)
+    over_budget = F.relu(deposit_mev[valid] - incident[valid]) / incident[valid].clamp_min(torch.finfo(dose_pred.dtype).eps)
+    return over_budget.square().mean()
+
+
+def _cell_widths_cm(z: Tensor) -> Tensor:
+    if z.shape[1] < 2:
+        return torch.ones_like(z)
+    diffs = torch.diff(z, dim=1).abs()
+    first = diffs[:, :1]
+    widths = torch.cat([first, diffs], dim=1)
+    return torch.where(torch.isfinite(widths) & (widths > 0.0), widths, torch.ones_like(widths))
+
+
+def _incident_energy_mev(batch: dict[str, Tensor], device: torch.device, dtype: torch.dtype) -> Tensor:
+    if "energy_mev" in batch:
+        return batch["energy_mev"].to(device=device, dtype=dtype).view(-1)
+
+    scalar_energy = batch["scalars"].to(device=device, dtype=dtype)[:, 0].view(-1)
+    if bool((torch.isfinite(scalar_energy) & (scalar_energy > 20.0)).all()):
+        return scalar_energy
+
+    if "r80" in batch:
+        r80_cm = batch["r80"].to(device=device, dtype=dtype).view(-1)
+        finite_positive = torch.isfinite(r80_cm) & (r80_cm > 0.0)
+        if bool(finite_positive.any()):
+            estimated = torch.pow((r80_cm / (0.82 * 0.0022)).clamp_min(torch.finfo(dtype).eps), 1.0 / 1.77)
+            return torch.where(finite_positive, estimated, scalar_energy)
+
+    return scalar_energy
+
+
+def _physical_density_or_ones(density: Tensor) -> Tensor:
+    finite = torch.isfinite(density)
+    if bool(finite.all() and (density > 0.0).all() and (density < 25.0).all()):
+        return density
+    return torch.ones_like(density)
 
 
 class SyntheticBraggDataset(Dataset[dict[str, Tensor]]):
@@ -222,7 +320,7 @@ def _run_epoch(
 ) -> dict[str, float]:
     is_train = optimizer is not None
     model.train(is_train)
-    totals: dict[str, float] = {"loss": 0.0, "dose_loss": 0.0, "letd_loss": 0.0, "r80_loss": 0.0}
+    totals: dict[str, float] = {}
     n_batches = 0
     autocast = torch.autocast(device_type=device.type, enabled=train_cfg.amp) if train_cfg.amp else nullcontext()
 
@@ -242,7 +340,7 @@ def _run_epoch(
             if scheduler is not None:
                 scheduler.step()
         for k, v in parts.items():
-            totals[k] += v
+            totals[k] = totals.get(k, 0.0) + v
         n_batches += 1
 
     return {k: v / max(1, n_batches) for k, v in totals.items()}

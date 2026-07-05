@@ -2,6 +2,9 @@
 
 Research software only. This model follows the v3.1 tensor contract:
 ``forward(x:(B,Nz,9), scalars:(B,4))`` returns dose, LETd, and R80 predictions.
+When requested by ``ModelConfig.quantities``, the coordinate decoder also returns
+nonnegative LETt and fluence profiles. Defaults intentionally keep the Phase 1/2
+output and parameter surface unchanged.
 Depth is in cm in the data contract; optional coordinate queries are normalized
 to [0, 1] unless physical coordinates outside that range are supplied, in which
 case they are normalized by their per-sample maximum.
@@ -17,7 +20,7 @@ from torch import Tensor, nn
 import torch.nn.functional as F
 
 from braggtransporter.config import ModelConfig
-from braggtransporter.schema import C_IN_PERDEPTH, C_SCALAR
+from braggtransporter.schema import C_IN_PERDEPTH, C_SCALAR, QUANTITIES
 
 
 class CalibrationWrapper(nn.Module):
@@ -49,6 +52,13 @@ class BraggTransporterV0(nn.Module):
         self.d_ff = int(d_ff if d_ff is not None else params.get("d_ff", 256))
         self.dropout = float(dropout if dropout is not None else params.get("dropout", 0.0))
         extra = params.get("extra", {}) or {}
+        quantities = params.get("quantities", ["dose", "letd"]) or []
+        unknown = sorted(set(quantities) - set(QUANTITIES))
+        if unknown:
+            raise ValueError(f"unknown ModelConfig.quantities entries: {unknown}")
+        self.quantities = tuple(str(q) for q in quantities)
+        self.predict_lett = "lett" in self.quantities
+        self.predict_fluence = "fluence" in self.quantities
         self.decoder_mode = str(extra.get("decoder_mode", "coord_query"))
         if self.decoder_mode not in {"coord_query", "fixed_grid"}:
             raise ValueError("ModelConfig.extra['decoder_mode'] must be 'coord_query' or 'fixed_grid'")
@@ -100,6 +110,10 @@ class BraggTransporterV0(nn.Module):
         hidden = self.d_ff // 2
         self.dose_head = nn.Linear(hidden, 1)
         self.letd_head = nn.Linear(hidden, 1)
+        if self.predict_lett:
+            self.lett_head = nn.Linear(hidden, 1)
+        if self.predict_fluence:
+            self.fluence_head = nn.Linear(hidden, 1)
         self.r80_head = nn.Sequential(
             nn.LayerNorm(self.d_model * 2),
             nn.Linear(self.d_model * 2, self.d_ff),
@@ -114,7 +128,7 @@ class BraggTransporterV0(nn.Module):
         scalars: Tensor,
         z_query: Tensor | None = None,
     ) -> dict[str, Tensor]:
-        """Predict dose/LETd/R80.
+        """Predict dose/LETd/R80, with optional LETt/fluence heads.
 
         ``z_query`` is optional and may be ``(Nq,)`` or ``(B,Nq)``. Values in
         [0, 1] are treated as normalized depth coordinates. Values outside that
@@ -148,21 +162,25 @@ class BraggTransporterV0(nn.Module):
             decoded = self.query_decoder(query_features)
             dose = F.softplus(self.dose_head(decoded).squeeze(-1))
             letd = self.letd_head(decoded).squeeze(-1)
+            outputs = self._profile_outputs(decoded, dose, letd)
         else:
             decoded_grid = self.fixed_grid_decoder(depth_latent)
             dose_grid = F.softplus(self.dose_head(decoded_grid).squeeze(-1))
             letd_grid = self.letd_head(decoded_grid).squeeze(-1)
+            outputs_grid = self._profile_outputs(decoded_grid, dose_grid, letd_grid)
             if z_query is None:
-                dose = dose_grid
-                letd = letd_grid
+                outputs = outputs_grid
             else:
                 coords = self._query_coords(z_query, batch, nz, x.device, x.dtype)
-                dose = self._interpolate_values(dose_grid, coords)
-                letd = self._interpolate_values(letd_grid, coords)
+                outputs = {
+                    name: self._interpolate_values(values, coords)
+                    for name, values in outputs_grid.items()
+                }
         pooled = depth_latent.mean(dim=1)
         r80 = F.softplus(self.r80_head(torch.cat([global_token, pooled], dim=-1)).squeeze(-1)) * 40.0
 
-        return self.calibration({"dose": dose, "letd": letd, "r80": r80})
+        outputs["r80"] = r80
+        return self.calibration(outputs)
 
     def param_count(self) -> int:
         """Number of trainable parameters."""
@@ -218,6 +236,14 @@ class BraggTransporterV0(nn.Module):
     @staticmethod
     def _interpolate_values(values: Tensor, coords: Tensor) -> Tensor:
         return BraggTransporterV0._interpolate_latent(values.unsqueeze(-1), coords).squeeze(-1)
+
+    def _profile_outputs(self, decoded: Tensor, dose: Tensor, letd: Tensor) -> dict[str, Tensor]:
+        outputs = {"dose": dose, "letd": letd}
+        if self.predict_lett:
+            outputs["lett"] = F.softplus(self.lett_head(decoded).squeeze(-1))
+        if self.predict_fluence:
+            outputs["fluence"] = F.softplus(self.fluence_head(decoded).squeeze(-1))
+        return outputs
 
 
 def _model_params(cfg: ModelConfig | dict[str, Any] | None) -> dict[str, Any]:
