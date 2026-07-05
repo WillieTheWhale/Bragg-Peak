@@ -1,0 +1,2 @@
+rank,name,decoder_mode,use_physics_prior,loss_mode,distal_edge_weight,distal_edge_error_mm,gamma_pass_pct,rmse_pct,ckpt,eval_summary_json
+1,cq_prior_on_weighted,coord_query,True,distal_edge_weighted,5.0,nan,2.1739130434782608,44.84552320568989,/Users/williamkeffer/NerdsInc/Personal_Projects/bragg_peak/experiments/bt/phase2a/runs/cq_prior_on_weighted/braggtransporter_v0/best.pt,/Users/williamkeffer/NerdsInc/Personal_Projects/bragg_peak/experiments/bt/phase2a/eval/cq_prior_on_weighted/summary.json

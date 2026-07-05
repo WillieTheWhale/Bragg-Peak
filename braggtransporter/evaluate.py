@@ -95,7 +95,7 @@ def load_model(ckpt_path: Path, device_name: str = "auto") -> Any:
         cfg = ckpt.get("config")
         saved_model_cfg = cfg.get("model") if isinstance(cfg, dict) else None
         model_config = ModelConfig(**saved_model_cfg) if isinstance(saved_model_cfg, dict) else ModelConfig()
-        canonical = model_name if model_name in ("mlp", "fno1d", "dota", "braggtransporter_v0") else {
+        canonical = model_name if model_name in ("mlp", "fno1d", "mamba1d", "dota", "braggtransporter_v0") else {
             "v0": "braggtransporter_v0", "fno": "fno1d", "dota_transformer": "dota",
         }.get(model_name, model_name)
         model = build_model(canonical, model_config)

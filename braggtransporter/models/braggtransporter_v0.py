@@ -49,6 +49,10 @@ class BraggTransporterV0(nn.Module):
         self.d_ff = int(d_ff if d_ff is not None else params.get("d_ff", 256))
         self.dropout = float(dropout if dropout is not None else params.get("dropout", 0.0))
         extra = params.get("extra", {}) or {}
+        self.decoder_mode = str(extra.get("decoder_mode", "coord_query"))
+        if self.decoder_mode not in {"coord_query", "fixed_grid"}:
+            raise ValueError("ModelConfig.extra['decoder_mode'] must be 'coord_query' or 'fixed_grid'")
+        self.use_physics_prior = bool(extra.get("use_physics_prior", True))
         self.max_positions = int(max_positions if max_positions is not None else extra.get("max_positions", 2048))
 
         self.input_norm = nn.LayerNorm(C_IN_PERDEPTH)
@@ -79,12 +83,20 @@ class BraggTransporterV0(nn.Module):
         self.encoder = nn.TransformerEncoder(layer, num_layers=self.n_layers, enable_nested_tensor=False)
         self.encoder_norm = nn.LayerNorm(self.d_model)
 
-        self.query_decoder = nn.Sequential(
-            nn.Linear(self.d_model + 1, self.d_ff),
-            nn.GELU(),
-            nn.Linear(self.d_ff, self.d_ff // 2),
-            nn.GELU(),
-        )
+        if self.decoder_mode == "coord_query":
+            self.query_decoder = nn.Sequential(
+                nn.Linear(self.d_model + 1, self.d_ff),
+                nn.GELU(),
+                nn.Linear(self.d_ff, self.d_ff // 2),
+                nn.GELU(),
+            )
+        else:
+            self.fixed_grid_decoder = nn.Sequential(
+                nn.Linear(self.d_model, self.d_ff),
+                nn.GELU(),
+                nn.Linear(self.d_ff, self.d_ff // 2),
+                nn.GELU(),
+            )
         hidden = self.d_ff // 2
         self.dose_head = nn.Linear(hidden, 1)
         self.letd_head = nn.Linear(hidden, 1)
@@ -115,6 +127,10 @@ class BraggTransporterV0(nn.Module):
         if scalars.ndim != 2 or scalars.shape[-1] != C_SCALAR:
             raise ValueError(f"scalars must have shape (B,{C_SCALAR}), got {tuple(scalars.shape)}")
 
+        if not self.use_physics_prior:
+            x = x.clone()
+            x[..., 4:9] = 0.0
+
         batch, nz, _ = x.shape
         depth_tokens = self.input_proj(self.input_norm(x))
         depth_tokens = depth_tokens + self._positional_encoding(nz, x.device, x.dtype)
@@ -125,13 +141,24 @@ class BraggTransporterV0(nn.Module):
 
         global_token = encoded[:, 0]
         depth_latent = encoded[:, 1:]
-        coords = self._query_coords(z_query, batch, nz, x.device, x.dtype)
-        query_latent = self._interpolate_latent(depth_latent, coords)
-        query_features = torch.cat([query_latent, coords.unsqueeze(-1)], dim=-1)
-        decoded = self.query_decoder(query_features)
-
-        dose = F.softplus(self.dose_head(decoded).squeeze(-1))
-        letd = self.letd_head(decoded).squeeze(-1)
+        if self.decoder_mode == "coord_query":
+            coords = self._query_coords(z_query, batch, nz, x.device, x.dtype)
+            query_latent = self._interpolate_latent(depth_latent, coords)
+            query_features = torch.cat([query_latent, coords.unsqueeze(-1)], dim=-1)
+            decoded = self.query_decoder(query_features)
+            dose = F.softplus(self.dose_head(decoded).squeeze(-1))
+            letd = self.letd_head(decoded).squeeze(-1)
+        else:
+            decoded_grid = self.fixed_grid_decoder(depth_latent)
+            dose_grid = F.softplus(self.dose_head(decoded_grid).squeeze(-1))
+            letd_grid = self.letd_head(decoded_grid).squeeze(-1)
+            if z_query is None:
+                dose = dose_grid
+                letd = letd_grid
+            else:
+                coords = self._query_coords(z_query, batch, nz, x.device, x.dtype)
+                dose = self._interpolate_values(dose_grid, coords)
+                letd = self._interpolate_values(letd_grid, coords)
         pooled = depth_latent.mean(dim=1)
         r80 = F.softplus(self.r80_head(torch.cat([global_token, pooled], dim=-1)).squeeze(-1)) * 40.0
 
@@ -187,6 +214,10 @@ class BraggTransporterV0(nn.Module):
         lower = torch.gather(depth_latent, dim=1, index=gather_lower)
         upper = torch.gather(depth_latent, dim=1, index=gather_upper)
         return lower.mul(lower_weight) + upper.mul(upper_weight)
+
+    @staticmethod
+    def _interpolate_values(values: Tensor, coords: Tensor) -> Tensor:
+        return BraggTransporterV0._interpolate_latent(values.unsqueeze(-1), coords).squeeze(-1)
 
 
 def _model_params(cfg: ModelConfig | dict[str, Any] | None) -> dict[str, Any]:

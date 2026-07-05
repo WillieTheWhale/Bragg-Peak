@@ -43,6 +43,7 @@ def build_model(name: str, cfg: ModelConfig) -> nn.Module:
     registry: dict[str, Callable[[], type[nn.Module]]] = {
         "mlp": lambda: _lazy_import("braggtransporter.models.mlp", "MLPBaseline"),
         "fno1d": lambda: _lazy_import("braggtransporter.models.fno1d", "FNO1d"),
+        "mamba1d": lambda: _lazy_import("braggtransporter.models.mamba1d", "Mamba1d"),
         "dota": lambda: _lazy_import("braggtransporter.models.dota_transformer", "DoTATransformer"),
         "braggtransporter_v0": lambda: _lazy_import(
             "braggtransporter.models.braggtransporter_v0", "BraggTransporterV0"
