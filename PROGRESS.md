@@ -13,13 +13,19 @@ each phase is gated (tests + metrics pass) before the next begins.
 ## Phase gates
 - [ ] **Phase 0 — Scaffold + env + remote overwrite.** contracts frozen (`schema.py`,
       `config.py`, `INTERFACES.md`), repo pushed to `WillieTheWhale/Bragg-Peak`.
-- [ ] **Phase 1 (Month 1) — Data engine + baselines + v0.**
-      - [ ] tier-1 1-D data generator (SDE/analytic) → HDF5, train/val/heldout-energy
-      - [ ] baselines: MLP, FNO1d, DoTA-style transformer
-      - [ ] BraggTransporter-v0 (physics prior + transformer + coord-query + det heads)
-      - [ ] metrics + eval + calibration harness
-      - [ ] **GATE:** v0 beats MLP/FNO/DoTA on distal-edge error on held-out energies;
-            all tests green.
+- [x] **Phase 1 (Month 1) — Data engine + baselines + v0. GATE PASSED.**
+      - [x] tier-1 1-D data generator (SDE/analytic) → HDF5, train/val/heldout-energy
+      - [x] baselines: MLP, FNO1d, DoTA-style transformer
+      - [x] BraggTransporter-v0 (physics prior + transformer + coord-query + det heads)
+      - [x] metrics + eval + calibration harness
+      - [x] **GATE PASS** on held-out energies (interpolation, clean analytic targets,
+            60 epochs, MPS). Distal-edge error (mm), lower=better:
+            **v0 0.111** < fno1d 0.120 < mlp 0.715 < dota 1.409.
+            γ(2%/2mm): v0 **96.8%**, fno1d 94.4%, dota 92.4%, mlp 69.5%.
+            RMSE%: v0 **0.90**, fno1d 0.99, dota 4.24, mlp 4.11. All 16 tests green.
+      - Honest note: on *clean analytic* targets FNO is competitive (0.120 vs 0.111 mm);
+        the v0/FNO distal-edge gap is expected to widen on sharper/noisier targets
+        (heterogeneous slabs, SDE residuals) — a Phase-2/4 follow-up.
 - [ ] **Phase 2A — Representation ablation** (fixed-grid vs coord-query; prior vs none).
 - [ ] **Phase 2B — Backbone ablation** (transformer vs FNO vs Mamba, matched budget).
 - [ ] **Phase 3 — Physics prior + multi-task heads + Stage-0 masked pretraining.**

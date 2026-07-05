@@ -1,0 +1,88 @@
+== 1. unit tests ==
+............                                                             [100%]
+== 2. generate 1-D dataset ==
+{
+  "counts": {
+    "heldout_energy": 160,
+    "train": 544,
+    "val": 136
+  },
+  "dz_cm": 0.05,
+  "fidelity": "ANALYTIC",
+  "max_depth_cm": 34.0,
+  "norm_path": "data/generated/phase1_1d.h5.norm.json",
+  "out_path": "data/generated/phase1_1d.h5",
+  "scalar_shape": [
+    4
+  ],
+  "x_shape": [
+    680,
+    9
+  ]
+}
+== 3. train v0 + baselines ==
+wrote configs/_gate_braggtransporter_v0.yaml model= braggtransporter_v0 epochs= 60
+-- training braggtransporter_v0 --
+{
+  "model": "braggtransporter_v0",
+  "best_val_loss": 0.542523592710495,
+  "param_count": 943765,
+  "device": "mps"
+}
+wrote configs/_gate_mlp.yaml model= mlp epochs= 60
+-- training mlp --
+{
+  "model": "mlp",
+  "best_val_loss": 9.55104931195577,
+  "param_count": 76995,
+  "device": "mps"
+}
+wrote configs/_gate_fno1d.yaml model= fno1d epochs= 60
+-- training fno1d --
+  return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+  return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+{
+  "model": "fno1d",
+  "best_val_loss": 1.370290219783783,
+  "param_count": 596299,
+  "device": "mps"
+}
+wrote configs/_gate_dota.yaml model= dota epochs= 60
+-- training dota --
+{
+  "model": "dota",
+  "best_val_loss": 9.086342295010885,
+  "param_count": 711683,
+  "device": "mps"
+}
+== 4. evaluate all on held-out energies ==
+       model       energy            n        rmse%       gamma%      edge_mm      peak_cm
+braggtransporter_v0          135           40        0.817        97.36        0.120       13.545
+braggtransporter_v0          175           40        1.077        97.45        0.143       21.300
+braggtransporter_v0          205           40        0.919        97.88        0.095       27.930
+braggtransporter_v0           95           40        0.792        94.60        0.086        7.285
+braggtransporter_v0    aggregate          160        0.901        96.82        0.111       17.515
+        dota          135           40        4.525        92.51        1.329       13.459
+        dota          175           40        4.496        93.73        1.601       21.194
+        dota          205           40        3.183        95.71        1.697       27.768
+        dota           95           40        4.765        87.48        1.011        7.102
+        dota    aggregate          160        4.242        92.36        1.409       17.381
+       fno1d          135           40        0.743        95.96        0.128       13.554
+       fno1d          175           40        1.720        89.36        0.155       21.396
+       fno1d          205           40        0.826        97.34        0.093       27.874
+       fno1d           95           40        0.669        95.09        0.104        7.245
+       fno1d    aggregate          160        0.990        94.44        0.120       17.517
+         mlp          135           40        4.766        89.82        0.665       13.586
+         mlp          175           40        4.682        87.96        0.883       21.539
+         mlp          205           40        3.023        80.87        0.828       28.151
+         mlp           95           40        3.956        19.47        0.482        7.270
+         mlp    aggregate          160        4.107        69.53        0.715       17.637
+Wrote CSV and JSON evaluation artifacts to experiments/bt/eval
+== 5. compute gate ==
+distal_edge_error_mm (held-out mean):
+  braggtransporter_v0      0.111 mm
+  fno1d                    0.120 mm
+  mlp                      0.715 mm
+  dota                     1.409 mm
+v0=0.111 mm; baselines={'dota': 1.409, 'fno1d': 0.12, 'mlp': 0.715}
+GATE: PASS (v0 <= all baselines on distal-edge error)
