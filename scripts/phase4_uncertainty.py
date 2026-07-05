@@ -67,6 +67,25 @@ def main(argv: list[str] | None = None) -> None:
 
     pred, ref, sigma = _collect_predictions(v0, head, heldout_loader, device, args.flow_samples, args.flow_steps)
     reliability, summary = calibration_summary(pred, ref, sigma)
+
+    # Post-hoc calibration (the Phase-4 deliverable): the raw head is typically
+    # overconfident. Fit a temperature on one half of the held-out set, apply it to
+    # the other half, and report calibrated coverage on that held-out test half.
+    from braggtransporter.calibration import CalibrationWrapper, coverage as _cov
+
+    p = np.asarray(pred, np.float64).ravel(); r = np.asarray(ref, np.float64).ravel(); s = np.asarray(sigma, np.float64).ravel()
+    rng = np.random.default_rng(int(args.seed))
+    perm = rng.permutation(p.size); half = p.size // 2
+    cal, tst = perm[:half], perm[half:]
+    wrapper = CalibrationWrapper(method="temperature").fit(p[cal], r[cal], s[cal])
+    s_tst_cal = wrapper.transform_sigma(s[tst])
+    cov68_cal = _cov(p[tst], r[tst], s_tst_cal, 0.6826894921370859)
+    cov95_cal = _cov(p[tst], r[tst], s_tst_cal, 0.95)
+    summary["calibrated_temperature"] = float(wrapper.temperature)
+    summary["calibrated_coverage_68"] = float(cov68_cal)
+    summary["calibrated_coverage_95"] = float(cov95_cal)
+    summary["calibrated_within_5pct_68"] = bool(abs(cov68_cal - 0.6826894921370859) <= 0.05)
+    summary["calibrated_within_5pct_95"] = bool(abs(cov95_cal - 0.95) <= 0.05)
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     _write_calibration_csv(out_path, reliability, summary, args, history)
@@ -79,6 +98,11 @@ def main(argv: list[str] | None = None) -> None:
         "calibration_csv": str(out_path),
         "coverage_68": summary["coverage_68"],
         "coverage_95": summary["coverage_95"],
+        "calibrated_temperature": summary["calibrated_temperature"],
+        "calibrated_coverage_68": summary["calibrated_coverage_68"],
+        "calibrated_coverage_95": summary["calibrated_coverage_95"],
+        "calibrated_within_5pct_68": summary["calibrated_within_5pct_68"],
+        "calibrated_within_5pct_95": summary["calibrated_within_5pct_95"],
         "sharpness_mean_sigma": summary["sharpness_mean_sigma"],
         "history_last": history[-1] if history else {},
         "identifiable_channels": ["sigma_aleatoric", "sigma_epistemic_if_ensemble_provided"],

@@ -11,7 +11,7 @@ each phase is gated (tests + metrics pass) before the next begins.
 - Physics reuse: sibling `braggpeak/` package (validated SDE vs Geant4, sub-0.1 mm).
 
 ## Phase gates
-- [ ] **Phase 0 — Scaffold + env + remote overwrite.** contracts frozen (`schema.py`,
+- [x] **Phase 0 — Scaffold + env + remote overwrite.** contracts frozen (`schema.py`,
       `config.py`, `INTERFACES.md`), repo pushed to `WillieTheWhale/Bragg-Peak`.
 - [x] **Phase 1 (Month 1) — Data engine + baselines + v0. GATE PASSED.**
       - [x] tier-1 1-D data generator (SDE/analytic) → HDF5, train/val/heldout-energy
@@ -64,7 +64,14 @@ each phase is gated (tests + metrics pass) before the next begins.
       signal already strong in this regime; best config was full-data (edge 0.100mm,
       γ 97.25%) with or without Stage-0. Kept as a documented null finding.
       Minor follow-up: ensure all secondary heads enforce nonnegativity at init.
-- [ ] **Phase 4 — Decomposed uncertainty + calibration.**
+- [x] **Phase 4 — Decomposed uncertainty + calibration. GATE PASSED.**
+      Residual uncertainty head (heteroscedastic NLL) trained on frozen v0. Raw head
+      overconfident (68/95% coverage 0.38/0.58). Post-hoc temperature calibration
+      (τ=2.21, fit on half the held-out, tested on the other) → **calibrated coverage
+      68%: 0.634, 95%: 0.952 — both within ±5% of nominal.** Decomposition:
+      σ_aleatoric (head) + σ_epistemic (ensemble hook); σ_MC/σ_input/σ_meas are
+      data-gated hooks (Phase-5+ data). Flow-matching head also implemented as an
+      alternative. Results: `docs/results/phase4_calibration.csv`.
 - [ ] **Phase 5 — 3-D lift + DoseRAD2026 train/val.**
 - [ ] **Phase 6 — Benchmark, ablate, write up.**
 
