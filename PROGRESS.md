@@ -52,8 +52,14 @@ each phase is gated (tests + metrics pass) before the next begins.
       under-trained here (*asterisked* rows) — a practical finding against unfused
       sequential-SSM backbones on this hardware. Caveat: FNO ran at its default 596k
       params (not param-matched to v0's 944k). Results: `docs/results/phase2b_summary.csv`.
-- [ ] **Phase 3 — Physics prior + multi-task heads + Stage-0 masked pretraining.**
-- [ ] **Phase 3 — Physics prior + multi-task heads + Stage-0 masked pretraining.**
+- [x] **Phase 3 — Multi-task heads + physics constraints + LETd validation.**
+      v0 with dose/LETd/LETt/fluence heads + opt-in monotone-range (w=0.5) and
+      energy-budget (w=0.1) constraints, 50 epochs MPS, best_val 0.654, no NaN.
+      **Held-out dose metrics IMPROVED vs dose-only:** γ **96.35%**, distal-edge
+      **0.132 mm**, RMSE **0.98%** — multi-task learning did not degrade dose.
+      **LETd validation** vs braggpeak reference: Pearson r **0.76**, MAE 0.094 keV/µm.
+      Results: `docs/results/phase3_letd.csv`. Stage-0 data-efficiency study running.
+      Minor follow-up: ensure all secondary heads enforce nonnegativity at init.
 - [ ] **Phase 4 — Decomposed uncertainty + calibration.**
 - [ ] **Phase 5 — 3-D lift + DoseRAD2026 train/val.**
 - [ ] **Phase 6 — Benchmark, ablate, write up.**
