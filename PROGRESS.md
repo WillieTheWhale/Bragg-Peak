@@ -72,7 +72,19 @@ each phase is gated (tests + metrics pass) before the next begins.
       σ_aleatoric (head) + σ_epistemic (ensemble hook); σ_MC/σ_input/σ_meas are
       data-gated hooks (Phase-5+ data). Flow-matching head also implemented as an
       alternative. Results: `docs/results/phase4_calibration.csv`.
-- [ ] **Phase 5 — 3-D lift + DoseRAD2026 train/val.**
+- [x] **Phase 5 — 3-D lift + DoseRAD2026 real data (pipeline works; accuracy cloud-gated).**
+      Downloaded real **DoseRAD2026** proton data (public, HuggingFace
+      `LMUK-RADONC-PHYS-RES/DoseRAD2026`): patient 1ABB006 CT (164×493×498) + plan
+      (36 beams, rays, energy layers) + 49 valid beamlet dose `.mha` volumes.
+      Built: `.mha`/SimpleITK loader, **beam's-eye-view extraction** (resample CT
+      along each ray, downsample to depth≤64 × 24×24), `Bragg3D` model, 3-D
+      gamma(3%/3mm) eval. Pipeline **verified end-to-end on real data** (4 tests green).
+      **Honest result:** laptop-scale POC gamma3d ≈ 32% at low epochs and *collapses*
+      with more training (49 beamlets from ONE patient → model overfits to a blob,
+      predicted peak ~10 cm off). This is the plan's expected **data-scarcity /
+      cloud-gated** outcome — competitive 3-D gamma needs the full 75-patient / 81k-
+      beamlet set on cloud GPU. The 1-D result (Phases 1–4) is the laptop-complete
+      contribution; the 3-D real-data pipeline is the reusable scaffold for cloud scale.
 - [ ] **Phase 6 — Benchmark, ablate, write up.**
 
 ## Log

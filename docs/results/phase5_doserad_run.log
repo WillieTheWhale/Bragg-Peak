@@ -1,0 +1,33 @@
+Phase 5 DoseRAD proof-of-concept: 37 train / 12 val beamlets, device=mps, params=124,679
+epoch 001: train_loss=0.00783732 val_loss=0.00290112
+epoch 002: train_loss=0.00245439 val_loss=0.00172402
+epoch 003: train_loss=0.00187745 val_loss=0.00161135
+epoch 004: train_loss=0.00187006 val_loss=0.00159272
+epoch 005: train_loss=0.00183963 val_loss=0.00158971
+epoch 006: train_loss=0.00182855 val_loss=0.00158865
+epoch 007: train_loss=0.0018568 val_loss=0.00158806
+epoch 008: train_loss=0.00182453 val_loss=0.0015881
+epoch 009: train_loss=0.00183324 val_loss=0.00158794
+epoch 010: train_loss=0.00191722 val_loss=0.00158783
+epoch 011: train_loss=0.00182653 val_loss=0.00158788
+epoch 012: train_loss=0.00185139 val_loss=0.00158769
+epoch 013: train_loss=0.00183668 val_loss=0.00158767
+epoch 014: train_loss=0.00182457 val_loss=0.00158799
+epoch 015: train_loss=0.00190716 val_loss=0.0015875
+epoch 016: train_loss=0.00194008 val_loss=0.00158781
+epoch 017: train_loss=0.00182892 val_loss=0.00158752
+epoch 018: train_loss=0.00183382 val_loss=0.00158738
+epoch 019: train_loss=0.00182766 val_loss=0.00158728
+epoch 020: train_loss=0.00182906 val_loss=0.00158725
+epoch 021: train_loss=0.00182533 val_loss=0.001587
+epoch 022: train_loss=0.00188932 val_loss=0.00158638
+epoch 023: train_loss=0.0018997 val_loss=0.00158604
+epoch 024: train_loss=0.00182194 val_loss=0.00158519
+epoch 025: train_loss=0.00182329 val_loss=0.00158442
+epoch 026: train_loss=0.00191202 val_loss=0.00158266
+epoch 027: train_loss=0.00183028 val_loss=0.00157964
+epoch 028: train_loss=0.00181857 val_loss=0.00157525
+epoch 029: train_loss=0.00192009 val_loss=0.00157079
+epoch 030: train_loss=0.00181634 val_loss=0.00157516
+Held-out beamlets: gamma3d_3pct_3mm=0.00% rmse=26.91% r80_error=105.10 mm
+Laptop-scale Phase 5 training is a proof-of-concept only; full-scale DoseRAD gamma remains cloud-gated per the v3.1 plan.
