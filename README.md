@@ -19,7 +19,16 @@ Two layers live in this repo:
 
 The full research plan is `brag_deep_learning/six-month-model-plan.md`; the
 architecture decision record is `brag_deep_learning/transformer-vs-operator-investigation.md`;
-the module contract is `braggtransporter/INTERFACES.md`; build status is `PROGRESS.md`.
+the module contract is `braggtransporter/INTERFACES.md`; build status is `PROGRESS.md`;
+the **final consolidated report (honest claims A/B/C, results, negatives) is
+`docs/FINAL_REPORT.md`**.
+
+**Build status:** Phases 0–6 complete. The 1-D learned-transport system (physics
+prior + transformer/coord-query backbone + multi-task LET heads + calibrated
+uncertainty + OOD abstention) is laptop-complete and gated; the 3-D DoseRAD2026
+pipeline runs on real data but competitive 3-D accuracy and Claim-B measurement
+validation are cloud/data-gated (as the plan flagged up front). Regenerate with
+`bash scripts/reproduce.sh` and `pytest tests/test_bt_*.py`.
 
 ## Three separately-proven claims (the scientific contract)
 - **A** — reproduce OpenGATE/Geant4 *faster* (public Monte-Carlo benchmarks).

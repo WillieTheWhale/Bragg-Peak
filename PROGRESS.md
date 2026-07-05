@@ -85,7 +85,10 @@ each phase is gated (tests + metrics pass) before the next begins.
       cloud-gated** outcome — competitive 3-D gamma needs the full 75-patient / 81k-
       beamlet set on cloud GPU. The 1-D result (Phases 1–4) is the laptop-complete
       contribution; the 3-D real-data pipeline is the reusable scaffold for cloud scale.
-- [ ] **Phase 6 — Benchmark, ablate, write up.**
+- [x] **Phase 6 — Benchmark, reproduce, OOD, write-up. COMPLETE.**
+      `docs/FINAL_REPORT.md` (claims A/B/C + honest negatives); `scripts/reproduce.sh`
+      (one-command regen, GATE PASS); `tests/test_bt_regression.py` CI invariants (5);
+      OOD/abstention: σ inflates in→OOD (0.48→0.68), abstention rate 10%→77%. 49 tests green.
 
 ## Log
 - Phase 0 started.
