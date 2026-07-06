@@ -1,0 +1,119 @@
+ braggtransporter_v0 epoch 001 train_loss=189.784 val_loss=187.31
+ braggtransporter_v0 epoch 002 train_loss=182.395 val_loss=182.188
+ braggtransporter_v0 epoch 003 train_loss=176.687 val_loss=174.792
+ braggtransporter_v0 epoch 004 train_loss=169.052 val_loss=165.324
+ braggtransporter_v0 epoch 005 train_loss=158.819 val_loss=152.397
+ braggtransporter_v0 epoch 006 train_loss=146.357 val_loss=138.362
+ braggtransporter_v0 epoch 007 train_loss=132.885 val_loss=123.503
+ braggtransporter_v0 epoch 008 train_loss=118.457 val_loss=109.086
+ braggtransporter_v0 epoch 009 train_loss=104.142 val_loss=96.7559
+ braggtransporter_v0 epoch 010 train_loss=91.6267 val_loss=86.7605
+ braggtransporter_v0 epoch 011 train_loss=81.0695 val_loss=79.6649
+ braggtransporter_v0 epoch 012 train_loss=72.9966 val_loss=73.4773
+ braggtransporter_v0 epoch 013 train_loss=66.0331 val_loss=65.1121
+ braggtransporter_v0 epoch 014 train_loss=58.2083 val_loss=55.5439
+ braggtransporter_v0 epoch 015 train_loss=50.1522 val_loss=51.723
+ braggtransporter_v0 epoch 016 train_loss=44.5107 val_loss=45.6206
+ braggtransporter_v0 epoch 017 train_loss=40.4297 val_loss=41.6692
+ braggtransporter_v0 epoch 018 train_loss=37.2057 val_loss=39.1258
+ braggtransporter_v0 epoch 019 train_loss=34.2742 val_loss=37.2874
+ braggtransporter_v0 epoch 020 train_loss=32.0462 val_loss=35.271
+ braggtransporter_v0 epoch 021 train_loss=29.826 val_loss=33.6212
+ braggtransporter_v0 epoch 022 train_loss=28.0456 val_loss=32.3415
+ braggtransporter_v0 epoch 023 train_loss=26.6048 val_loss=31.2393
+ braggtransporter_v0 epoch 024 train_loss=25.5241 val_loss=30.3465
+ braggtransporter_v0 epoch 025 train_loss=24.6074 val_loss=29.7195
+ braggtransporter_v0 epoch 026 train_loss=23.9934 val_loss=29.2738
+ braggtransporter_v0 epoch 027 train_loss=23.5555 val_loss=28.9463
+ braggtransporter_v0 epoch 028 train_loss=23.2911 val_loss=28.7594
+ braggtransporter_v0 epoch 029 train_loss=23.0564 val_loss=28.688
+ braggtransporter_v0 epoch 030 train_loss=23.0959 val_loss=28.6758
+/Users/williamkeffer/NerdsInc/Personal_Projects/bragg_peak/braggtransporter/models/fno1d.py:28: UserWarning: An output with one or more elements was resized since it had shape [], which does not match the required output shape [64, 80, 341]. This behavior is deprecated, and in a future PyTorch release outputs will not be resized unless they have zero elements. You can explicitly reuse an out tensor t by resizing it, inplace, to zero elements with t.resize_(0). (Triggered internally at /Users/runner/work/pytorch/pytorch/aten/src/ATen/native/Resize.cpp:38.)
+  x_ft = torch.fft.rfft(x, dim=-1)
+/Users/williamkeffer/NerdsInc/Personal_Projects/bragg_peak/braggtransporter/models/fno1d.py:38: UserWarning: An output with one or more elements was resized since it had shape [], which does not match the required output shape [64, 80, 680]. This behavior is deprecated, and in a future PyTorch release outputs will not be resized unless they have zero elements. You can explicitly reuse an out tensor t by resizing it, inplace, to zero elements with t.resize_(0). (Triggered internally at /Users/runner/work/pytorch/pytorch/aten/src/ATen/native/Resize.cpp:38.)
+  return torch.fft.irfft(out_ft, n=n_depth, dim=-1)
+/Users/williamkeffer/NerdsInc/Personal_Projects/bragg_peak/.venv/lib/python3.11/site-packages/torch/autograd/graph.py:882: UserWarning: An output with one or more elements was resized since it had shape [], which does not match the required output shape [64, 80, 341]. This behavior is deprecated, and in a future PyTorch release outputs will not be resized unless they have zero elements. You can explicitly reuse an out tensor t by resizing it, inplace, to zero elements with t.resize_(0). (Triggered internally at /Users/runner/work/pytorch/pytorch/aten/src/ATen/native/Resize.cpp:38.)
+  return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+/Users/williamkeffer/NerdsInc/Personal_Projects/bragg_peak/braggtransporter/models/fno1d.py:28: UserWarning: An output with one or more elements was resized since it had shape [], which does not match the required output shape [46, 80, 341]. This behavior is deprecated, and in a future PyTorch release outputs will not be resized unless they have zero elements. You can explicitly reuse an out tensor t by resizing it, inplace, to zero elements with t.resize_(0). (Triggered internally at /Users/runner/work/pytorch/pytorch/aten/src/ATen/native/Resize.cpp:38.)
+  x_ft = torch.fft.rfft(x, dim=-1)
+/Users/williamkeffer/NerdsInc/Personal_Projects/bragg_peak/braggtransporter/models/fno1d.py:38: UserWarning: An output with one or more elements was resized since it had shape [], which does not match the required output shape [46, 80, 680]. This behavior is deprecated, and in a future PyTorch release outputs will not be resized unless they have zero elements. You can explicitly reuse an out tensor t by resizing it, inplace, to zero elements with t.resize_(0). (Triggered internally at /Users/runner/work/pytorch/pytorch/aten/src/ATen/native/Resize.cpp:38.)
+  return torch.fft.irfft(out_ft, n=n_depth, dim=-1)
+/Users/williamkeffer/NerdsInc/Personal_Projects/bragg_peak/.venv/lib/python3.11/site-packages/torch/autograd/graph.py:882: UserWarning: An output with one or more elements was resized since it had shape [], which does not match the required output shape [46, 80, 341]. This behavior is deprecated, and in a future PyTorch release outputs will not be resized unless they have zero elements. You can explicitly reuse an out tensor t by resizing it, inplace, to zero elements with t.resize_(0). (Triggered internally at /Users/runner/work/pytorch/pytorch/aten/src/ATen/native/Resize.cpp:38.)
+  return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+/Users/williamkeffer/NerdsInc/Personal_Projects/bragg_peak/braggtransporter/models/fno1d.py:28: UserWarning: An output with one or more elements was resized since it had shape [], which does not match the required output shape [4, 80, 341]. This behavior is deprecated, and in a future PyTorch release outputs will not be resized unless they have zero elements. You can explicitly reuse an out tensor t by resizing it, inplace, to zero elements with t.resize_(0). (Triggered internally at /Users/runner/work/pytorch/pytorch/aten/src/ATen/native/Resize.cpp:38.)
+  x_ft = torch.fft.rfft(x, dim=-1)
+/Users/williamkeffer/NerdsInc/Personal_Projects/bragg_peak/braggtransporter/models/fno1d.py:38: UserWarning: An output with one or more elements was resized since it had shape [], which does not match the required output shape [4, 80, 680]. This behavior is deprecated, and in a future PyTorch release outputs will not be resized unless they have zero elements. You can explicitly reuse an out tensor t by resizing it, inplace, to zero elements with t.resize_(0). (Triggered internally at /Users/runner/work/pytorch/pytorch/aten/src/ATen/native/Resize.cpp:38.)
+  return torch.fft.irfft(out_ft, n=n_depth, dim=-1)
+               fno1d epoch 001 train_loss=198.92 val_loss=199.543
+               fno1d epoch 002 train_loss=180.902 val_loss=179.338
+               fno1d epoch 003 train_loss=160.582 val_loss=159.293
+               fno1d epoch 004 train_loss=141.775 val_loss=141.563
+               fno1d epoch 005 train_loss=124.692 val_loss=125.415
+               fno1d epoch 006 train_loss=109.58 val_loss=111.098
+               fno1d epoch 007 train_loss=96.3462 val_loss=98.5662
+               fno1d epoch 008 train_loss=85.1253 val_loss=87.4465
+               fno1d epoch 009 train_loss=75.4149 val_loss=77.6429
+               fno1d epoch 010 train_loss=66.8251 val_loss=69.0582
+               fno1d epoch 011 train_loss=59.5995 val_loss=61.8479
+               fno1d epoch 012 train_loss=53.6463 val_loss=56.1013
+               fno1d epoch 013 train_loss=48.5672 val_loss=51.3199
+               fno1d epoch 014 train_loss=44.1703 val_loss=47.4328
+               fno1d epoch 015 train_loss=40.4133 val_loss=44.1772
+               fno1d epoch 016 train_loss=37.0921 val_loss=41.3867
+               fno1d epoch 017 train_loss=34.2001 val_loss=38.8701
+               fno1d epoch 018 train_loss=31.6789 val_loss=36.5204
+               fno1d epoch 019 train_loss=29.314 val_loss=34.3304
+               fno1d epoch 020 train_loss=27.3413 val_loss=32.6069
+               fno1d epoch 021 train_loss=25.8295 val_loss=31.1972
+               fno1d epoch 022 train_loss=24.3857 val_loss=29.9163
+               fno1d epoch 023 train_loss=23.36 val_loss=28.9514
+               fno1d epoch 024 train_loss=22.4785 val_loss=28.1586
+               fno1d epoch 025 train_loss=21.8521 val_loss=27.6214
+               fno1d epoch 026 train_loss=21.4155 val_loss=27.2475
+               fno1d epoch 027 train_loss=21.0329 val_loss=27.0172
+               fno1d epoch 028 train_loss=20.9857 val_loss=26.8989
+               fno1d epoch 029 train_loss=20.7676 val_loss=26.8466
+               fno1d epoch 030 train_loss=20.7573 val_loss=26.8383
+/Users/williamkeffer/NerdsInc/Personal_Projects/bragg_peak/braggtransporter/models/fno1d.py:28: UserWarning: An output with one or more elements was resized since it had shape [], which does not match the required output shape [8, 80, 341]. This behavior is deprecated, and in a future PyTorch release outputs will not be resized unless they have zero elements. You can explicitly reuse an out tensor t by resizing it, inplace, to zero elements with t.resize_(0). (Triggered internally at /Users/runner/work/pytorch/pytorch/aten/src/ATen/native/Resize.cpp:38.)
+  x_ft = torch.fft.rfft(x, dim=-1)
+/Users/williamkeffer/NerdsInc/Personal_Projects/bragg_peak/braggtransporter/models/fno1d.py:38: UserWarning: An output with one or more elements was resized since it had shape [], which does not match the required output shape [8, 80, 680]. This behavior is deprecated, and in a future PyTorch release outputs will not be resized unless they have zero elements. You can explicitly reuse an out tensor t by resizing it, inplace, to zero elements with t.resize_(0). (Triggered internally at /Users/runner/work/pytorch/pytorch/aten/src/ATen/native/Resize.cpp:38.)
+  return torch.fft.irfft(out_ft, n=n_depth, dim=-1)
+              conv1d epoch 001 train_loss=178.322 val_loss=131.682
+              conv1d epoch 002 train_loss=91.262 val_loss=57.4923
+              conv1d epoch 003 train_loss=39.1866 val_loss=30.5787
+              conv1d epoch 004 train_loss=23.0472 val_loss=24.9315
+              conv1d epoch 005 train_loss=16.4549 val_loss=21.8425
+              conv1d epoch 006 train_loss=13.8588 val_loss=17.1045
+              conv1d epoch 007 train_loss=12.3376 val_loss=16.2137
+              conv1d epoch 008 train_loss=11.3194 val_loss=14.7932
+              conv1d epoch 009 train_loss=10.1288 val_loss=13.2201
+              conv1d epoch 010 train_loss=8.99529 val_loss=11.6074
+              conv1d epoch 011 train_loss=8.03201 val_loss=9.81834
+              conv1d epoch 012 train_loss=6.86821 val_loss=8.17418
+              conv1d epoch 013 train_loss=5.66176 val_loss=6.76032
+              conv1d epoch 014 train_loss=4.67402 val_loss=5.36945
+              conv1d epoch 015 train_loss=4.34499 val_loss=4.78374
+              conv1d epoch 016 train_loss=4.41309 val_loss=4.66045
+              conv1d epoch 017 train_loss=3.50552 val_loss=4.4835
+              conv1d epoch 018 train_loss=3.32157 val_loss=3.96068
+              conv1d epoch 019 train_loss=2.7829 val_loss=3.91586
+              conv1d epoch 020 train_loss=2.65692 val_loss=3.02969
+              conv1d epoch 021 train_loss=2.44884 val_loss=2.9007
+              conv1d epoch 022 train_loss=2.3402 val_loss=2.87538
+              conv1d epoch 023 train_loss=2.17419 val_loss=2.65725
+              conv1d epoch 024 train_loss=2.09968 val_loss=2.41883
+              conv1d epoch 025 train_loss=2.0613 val_loss=2.40194
+              conv1d epoch 026 train_loss=1.99663 val_loss=2.28811
+              conv1d epoch 027 train_loss=1.94939 val_loss=2.39909
+              conv1d epoch 028 train_loss=1.92697 val_loss=2.24747
+              conv1d epoch 029 train_loss=1.90682 val_loss=2.25396
+              conv1d epoch 030 train_loss=1.91671 val_loss=2.26302
+
+Sharp held-out distal-edge ranking
+rank                model     params      gap%    edge_mm      g1/1%      g2/2%
+   1               conv1d     958163      1.53      0.250      86.43      96.97
+   2                fno1d     929691     -1.49      0.456       3.48      10.68
+   3  braggtransporter_v0     943765      0.00      0.747      35.72      69.64
+
+Conclusion: FNO beats transformer on the sharp edge by 0.291 mm mean paired error reduction (95% CI -0.465..-0.127, sign-flip p=0.0017).
+Wrote docs/results/sharp_comparison.csv plus NPZ/JSON metadata.

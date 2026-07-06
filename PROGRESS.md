@@ -99,3 +99,15 @@ gs://braggtransporter-braggtransporter, 1x T4/L4 spot quota). Wave 1 Codex agent
 O1 sharp-data architecture test (MPS), O2 DoseRAD 3-D normalization+multi-patient+GPU
 train script, O3 GCP spot-GPU harness. Targets: DoTA 99.37% gamma 1%/3mm; ADoTA
 99.4-99.87% beamlet / 98.4-98.9% plan-level 2%/2mm.
+
+### Overnight result #1 — Sharp-data architecture test (MPS, matched ~0.93M params)
+Heterogeneous-slab sharp 1-D, held-out, 30 epochs. Distal-edge / γ1%1mm / γ2%2mm:
+- **conv1d 0.250mm / 86.4% / 97.0%** (BEST)
+- fno1d 0.456mm / 3.5% / 10.7%
+- transformer v0 0.747mm / 35.7% / 69.6% (WORST on edge)
+**Honest finding — the memo's thesis is HALF refuted:** FNO *is* bad at the sharp edge on
+tight gamma (confirms the spectral-smoothing weakness), BUT the transformer is NOT the
+winner — a simple 1-D CONV beats both, and the transformer is worst on raw distal-edge.
+So "attention is uniquely good at sharp edges" is DISPROVEN; the real story is local
+convs > attention > spectral for sharp local edges. Caveat: single seed, 238 train
+samples, 30 epochs — directional, not definitive. Results: docs/results/sharp_comparison.csv.
