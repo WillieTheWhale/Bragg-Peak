@@ -210,7 +210,9 @@ else
 fi
 
 if [[ "$TAIL_LOGS" == "0" ]]; then
-  log "--no-tail requested. The EXIT trap will still delete $INSTANCE now."
+  DELETE_ON_EXIT=0   # leave the VM running so its startup script trains autonomously
+  log "--no-tail: VM $INSTANCE left RUNNING (startup script trains + checkpoints to GCS)."
+  log "COST: delete it when done -> gcloud compute instances delete $INSTANCE --zone=$ZONE --quiet"
   exit 0
 fi
 
