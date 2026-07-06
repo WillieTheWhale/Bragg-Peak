@@ -59,16 +59,21 @@ def download(patients: list[str], per_patient: int, root: str = "data/doserad202
             print(f"{pat}: dose listing failed ({e})", flush=True); continue
         paths = [p for p, _ in listed][:per_patient]
         n = 0
-        for p in paths:
+        def _one(p: str) -> int:
             out = d / "dose" / os.path.basename(p)
             if out.exists() and out.stat().st_size > 50000:
-                n += 1; continue
+                return 1
             try:
                 data = _get(RES.format(path=p))
                 if len(data) > 50000:  # skip corrupt/empty stubs
-                    out.write_bytes(data); n += 1
+                    out.write_bytes(data); return 1
             except Exception as e:  # noqa: BLE001
                 print(f"  {os.path.basename(p)} failed: {e}", flush=True)
+            return 0
+
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=16) as ex:  # concurrent -> ~10x faster
+            n = sum(ex.map(_one, paths))
         total += n
         print(f"{pat}: {n} beamlets + ct + plan", flush=True)
     print(f"TOTAL valid beamlets downloaded: {total}", flush=True)
