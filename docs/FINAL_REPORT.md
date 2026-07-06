@@ -18,11 +18,15 @@ one spot T4 overnight cannot reach. Two rigorous findings were produced instead:
    data (238 samples) — and DoTA/ADoTA's transformer success is at *large* scale, so this
    likely reflects that transformers are data-hungry, not that attention is useless.
    Results: `docs/results/sharp_multiseed.log`, `sharp_comparison.csv`.
-2. **GPU 3-D scaling confirms the collapse is data scarcity, not a bug.** The full cloud
-   pipeline ran on a spot T4 (real DoseRAD2026 `.mha`, CUDA + AMP, GCS checkpoints, clean
-   teardown, ~$0.06). Scaling 10× (49→480 beamlets) still gave γ3d ~0–5% — DoTA used
-   ~170× more data. The pipeline and cost-safe harness (`scripts/gcp_train.sh`) are proven
-   and ready for a full-dataset cloud run; data volume is the wall.
+2. **GPU 3-D scaling: the approach scales (0→28% γ3d), but 99% needs the papers' data volume.**
+   The full cloud pipeline ran on spot T4s (real DoseRAD2026 `.mha`, CUDA + AMP, GCS
+   checkpoints, autonomous self-deleting VMs, ~$0.4 total). A clean **scaling curve**
+   emerged in held-out γ3d(3%/3mm): **~0% at 49 beamlets (tiny model) → ~5% at 480 → 28.3%
+   at 1050 beamlets with a scaled model (d-model 192, 6 layers).** So the Phase-5 collapse
+   was *data scarcity + model capacity*, not a bug — and the 3-D method genuinely improves
+   with both. Reaching the papers' ~99% needs their ~80k-beamlet scale (≈76× our data),
+   a bigger model, and likely a DoTA-faithful BEV architecture — beyond an overnight
+   single-spot-T4 run. The pipeline + cost-safe harness are proven and ready for it.
 
 Net: the transformer is **not** the obviously-right backbone at laptop/small-cloud scale;
 its documented wins (DoTA/ADoTA) live at data scales we did not reach. Reported honestly
