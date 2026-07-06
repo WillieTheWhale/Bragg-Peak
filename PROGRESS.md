@@ -171,3 +171,10 @@ the papers' ~99%: DoTA-faithful architecture + full ~80k-beamlet dataset + conve
 **Run4 final: DoTA3D plateaued at gamma3d(3%/3mm) = 57.3%, rmse 6.0% on 4200 beamlets**
 (epoch 52; vs Bragg3D 28% / rmse ~10-22%). Architecture fidelity ~doubled gamma at the
 same data scale. Launching run5 (DoTA3D + ~8000 beamlets) to push further via data scale.
+
+### Overnight result #4 — data lever saturates ~57%; capacity is the next ceiling
+DoTA3D on 8000 beamlets (run5) tracked the 4200-beamlet run4 exactly (both ~50.7% at
+epoch 30) -> doubling data 4200->8000 did NOT raise gamma. So at this scale the ceiling
+is MODEL CAPACITY, not data. Next: run6 = bigger DoTA3D (d320/L10) on the same 8000
+beamlets to test the capacity lever. Path to papers now precise: bigger DoTA architecture
++ full ~80k data + convergence.
