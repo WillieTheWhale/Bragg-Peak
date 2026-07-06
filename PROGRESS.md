@@ -213,3 +213,12 @@ Reaching the papers' ~99% is NOT achievable at this compute class -- it requires
 full ~80k-beamlet dataset + a bigger model trained to convergence = multi-GPU or
 multi-day compute (a resourcing decision beyond overnight/1-T4). All 7 GPU runs
 self-deleted/deleted; total spend ~\$4; 0 orphaned instances.
+
+### Overnight result #7 — per-epoch gamma eval is the SCALABILITY bottleneck (not data)
+run9 (12600 beamlets) was 98% CPU-bound with the GPU at 0% — the per-epoch 3-D gamma
+evaluation over ~1900 held-out beamlets (Python local-search) dominates, making
+large-scale training impractically slow (stalled at epoch 12, GPU idle). This ALSO means
+my earlier "57% ceiling" runs were gamma-eval-limited in how far they could train. Fix
+needed: subsample per-epoch progress-gamma (full eval only at end) + DataLoader workers.
+Pivoting to the KEY test the user raised: DoTA warm-restart schedule + weight decay + LONG
+training + FAST eval, to see if the 57% plateau was a premature-stopping/schedule artifact.
