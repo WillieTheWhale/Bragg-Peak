@@ -10,6 +10,29 @@ API = f"https://huggingface.co/api/datasets/{REPO}/tree/main/proton/training/{{p
 RES = f"https://huggingface.co/datasets/{REPO}/resolve/main/{{path}}"
 
 
+_SIBLINGS: list[str] | None = None
+
+
+def _all_siblings() -> list[str]:
+    """Complete file list from the dataset info API (all ~99k files, no pagination cap)."""
+    global _SIBLINGS
+    if _SIBLINGS is None:
+        d = json.loads(_get(f"https://huggingface.co/api/datasets/{REPO}").decode())
+        _SIBLINGS = [s["rfilename"] for s in d.get("siblings", [])]
+    return _SIBLINGS
+
+
+def _list_dose_files(pat: str) -> list[tuple[str, int]]:
+    """ALL proton dose .mha files for a patient (from the complete siblings list)."""
+    pref = f"proton/training/{pat}/dose/"
+    paths = [p for p in _all_siblings() if p.startswith(pref) and p.endswith(".mha")]
+    if paths:
+        return [(p, 10**6) for p in paths]  # size unknown; validate after download
+    # fallback: tree API first page
+    files = json.loads(_get(API.format(pat=pat)).decode())
+    return [(f["path"], f.get("size", 0)) for f in files if f.get("type") == "file"]
+
+
 def _get(url: str) -> bytes:
     for _ in range(4):
         try:
@@ -31,17 +54,19 @@ def download(patients: list[str], per_patient: int, root: str = "data/doserad202
         except Exception as e:  # noqa: BLE001
             print(f"{pat}: CT/plan failed ({e}); skipping", flush=True); continue
         try:
-            files = json.loads(_get(API.format(pat=pat)).decode())
+            listed = _list_dose_files(pat)
         except Exception as e:  # noqa: BLE001
             print(f"{pat}: dose listing failed ({e})", flush=True); continue
-        valid = [f["path"] for f in files if f.get("type") == "file" and f.get("size", 0) > 50000][:per_patient]
+        paths = [p for p, _ in listed][:per_patient]
         n = 0
-        for p in valid:
+        for p in paths:
             out = d / "dose" / os.path.basename(p)
             if out.exists() and out.stat().st_size > 50000:
                 n += 1; continue
             try:
-                out.write_bytes(_get(RES.format(path=p))); n += 1
+                data = _get(RES.format(path=p))
+                if len(data) > 50000:  # skip corrupt/empty stubs
+                    out.write_bytes(data); n += 1
             except Exception as e:  # noqa: BLE001
                 print(f"  {os.path.basename(p)} failed: {e}", flush=True)
         total += n
