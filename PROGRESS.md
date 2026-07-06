@@ -188,7 +188,7 @@ papers' ~99%:
 |---|---|---|
 | architecture | Bragg3D -> DoTA-faithful | 28% -> 57% (DOMINANT) |
 | data | 4200 -> 8000 beamlets | saturated ~57% at d192 |
-| capacity | d192/L6 -> d320/L10 | slower, compute-bound, <=57% in budget |
+| capacity | d192/L6 -> d320/L10 | slower, compute-bound, peaked 52% < 57% in budget |
 **Precise conclusion:** reaching 99% needs a bigger DoTA-faithful model trained to
 CONVERGENCE on the full ~80k-beamlet dataset = multi-GPU or multi-day compute (a
 resourcing decision). Overnight single-T4 runs peak at ~57%. Total GPU spend ~\$3,
