@@ -72,7 +72,7 @@ def download(patients: list[str], per_patient: int, root: str = "data/doserad202
             return 0
 
         from concurrent.futures import ThreadPoolExecutor
-        with ThreadPoolExecutor(max_workers=16) as ex:  # concurrent -> ~10x faster
+        with ThreadPoolExecutor(max_workers=32) as ex:  # concurrent -> ~10x faster
             n = sum(ex.map(_one, paths))
         total += n
         print(f"{pat}: {n} beamlets + ct + plan", flush=True)
