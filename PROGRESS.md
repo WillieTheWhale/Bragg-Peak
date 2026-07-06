@@ -150,3 +150,12 @@ right shape. Autonomous run self-managed via GCS + triple cost-safety; VM delete
 overnight GPU spend ~\$0.4 (two spot-T4 runs). Follow-up to actually approach the papers:
 full 55-patient / paginated beamlet download (tens of thousands), bigger model, multi-hour
 or multi-GPU training, likely a DoTA-faithful BEV architecture.
+
+### Overnight result #2c — Next bottleneck is COMPUTE TIME (6400-beamlet run)
+Scaling further (16 patients x 400 = ~6400 beamlets, bigger model d256/L8) exposed the
+next wall: ~20-30 min/epoch on ONE spot T4, so it cannot converge within the 6h cap
+(~12 epochs -> non-converged ~10-15% gamma). Deleted rather than harvest a misleadingly
+low non-converged number. **Converged best remains the 1050-beamlet run at 28% gamma.**
+Lesson: past ~1000 beamlets, a single T4 is compute-time-bound; approaching the papers
+needs multi-GPU or multi-day training in ADDITION to the full ~80k-beamlet dataset.
+Total overnight GPU spend ~\$0.7; all VMs self-deleted/deleted, 0 running.
