@@ -111,3 +111,15 @@ winner — a simple 1-D CONV beats both, and the transformer is worst on raw dis
 So "attention is uniquely good at sharp edges" is DISPROVEN; the real story is local
 convs > attention > spectral for sharp local edges. Caveat: single seed, 238 train
 samples, 30 epochs — directional, not definitive. Results: docs/results/sharp_comparison.csv.
+
+### Overnight result #2 — GPU 3-D scaling experiment (spot T4, DoseRAD2026)
+Downloaded 12 patients / 480 beamlets from HuggingFace; trained Bragg3D on a spot T4
+(CUDA verified, AMP, checkpoints streamed to gs://.../runs/scaling1). Infra fully
+exercised (VM create, bootstrap, data, systemd training, GCS checkpointing, teardown).
+**Honest finding:** even at 10x the Phase-5 data (49->480 beamlets), held-out gamma3d
+stayed pinned at ~0-5% and rmse ~22% plateaued — the CT->3D-dose map does not learn at
+this scale. Confirms the collapse is DATA SCARCITY, not a bug: DoTA/ADoTA used ~80k
+beamlets (~170x more). Competitive 3-D gamma needs the full dataset + serious compute;
+the pipeline + cloud harness are proven and ready for that. GPU cost ~$0.06 (spot T4,
+25 min); VM deleted. Also fixed: gcp_train.sh --no-tail teardown bug, image-family, and
+a memory-safe batch size (OOM at bs=32 on 30GB -> bs=8).
