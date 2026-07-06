@@ -5,10 +5,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import random
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -18,7 +20,7 @@ if str(REPO_ROOT) not in sys.path:
 
 import numpy as np
 import torch
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader, Dataset, Subset
 
 from braggtransporter.data.doserad import (
     depth_profile,
@@ -45,6 +47,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--lr-halve-epochs", type=int, default=4)
     parser.add_argument("--weight-decay", type=float, default=0.05)
     parser.add_argument("--save-best-by", choices=["gamma", "val_loss"], default="gamma")
+    parser.add_argument("--eval-subsample", type=int, default=96, help="Fixed held-out beamlets for per-epoch progress gamma.")
+    parser.add_argument("--full-eval-every", type=int, default=0, help="Run full held-out gamma every N epochs; 0 means only at end.")
     parser.add_argument("--model", default="bragg3d", choices=["bragg3d", "dota3d"])
     parser.add_argument("--device", default="cuda", choices=["auto", "cuda", "mps", "cpu"])
     parser.add_argument("--seed", type=int, default=0)
@@ -52,7 +56,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--depth-size", type=int, default=64)
     parser.add_argument("--lateral-size", type=int, default=24)
     parser.add_argument("--lateral-extent-mm", type=float, default=96.0)
-    parser.add_argument("--num-workers", type=int, default=2)
+    parser.add_argument(
+        "--num-workers",
+        type=int,
+        default=None,
+        help="DataLoader workers; default is min(8, os.cpu_count()) for training and 0 for --fast smoke.",
+    )
     parser.add_argument("--out-dir", default="experiments/doserad_gpu")
     parser.add_argument("--checkpoint-every-steps", type=int, default=100)
     parser.add_argument("--grad-clip", type=float, default=1.0)
@@ -78,7 +87,6 @@ def main() -> None:
         args.lateral_size = min(args.lateral_size, 8)
         args.batch_size = min(args.batch_size, 2)
         args.max_beamlets = min(args.max_beamlets or 8, 8)
-        args.num_workers = 0
     metrics = train(args)
     print(json.dumps({"final": json_clean(metrics)}, sort_keys=True), flush=True)
 
@@ -94,6 +102,7 @@ def train(args: argparse.Namespace) -> dict[str, float]:
         print(f"download_summary={json.dumps(summary, sort_keys=True)}", flush=True)
 
     train_loader, val_loader, source = build_loaders(args)
+    val_sub_loader = make_eval_subsample_loader(val_loader, args)
     model = build_model(args).to(device)
     initialize_lazy_modules(model, train_loader, device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=float(args.lr), weight_decay=float(args.weight_decay))
@@ -115,6 +124,7 @@ def train(args: argparse.Namespace) -> dict[str, float]:
     print(
         "DoseRAD GPU train: "
         f"model={args.model} source={source} train={len(train_loader.dataset)} val={len(val_loader.dataset)} "
+        f"val_sub={len(val_sub_loader.dataset)} workers={train_loader.num_workers} "
         f"device={device} amp={amp_enabled} params={model.param_count():,}",
         flush=True,
     )
@@ -127,6 +137,7 @@ def train(args: argparse.Namespace) -> dict[str, float]:
         epoch_lr = current_lr(optimizer)
         model.train()
         losses: list[float] = []
+        train_t0 = time.perf_counter()
         for batch in train_loader:
             loss_value = train_step(
                 model,
@@ -142,15 +153,28 @@ def train(args: argparse.Namespace) -> dict[str, float]:
             global_step += 1
             losses.append(loss_value)
             if int(args.checkpoint_every_steps) > 0 and global_step % int(args.checkpoint_every_steps) == 0:
-                latest_metrics = evaluate(model, val_loader, device)
+                latest_metrics = evaluate(model, val_sub_loader, device)
                 save_and_upload(out_dir, args, model, optimizer, scheduler, scaler, epoch, global_step, latest_metrics)
 
         train_loss = float(np.mean(losses)) if losses else float("nan")
-        latest_metrics = evaluate(model, val_loader, device)
+        train_seconds = time.perf_counter() - train_t0
+        eval_t0 = time.perf_counter()
+        latest_metrics = evaluate(model, val_sub_loader, device)
+        sub_eval_seconds = time.perf_counter() - eval_t0
         latest_metrics["train_loss"] = train_loss
         latest_metrics["epoch"] = float(epoch)
         latest_metrics["global_step"] = float(global_step)
         latest_metrics["lr"] = epoch_lr
+        latest_metrics["eval_subsample"] = float(len(val_sub_loader.dataset))
+        latest_metrics["train_seconds"] = float(train_seconds)
+        latest_metrics["eval_sub_seconds"] = float(sub_eval_seconds)
+        full_eval_seconds = float("nan")
+        if should_run_full_eval(epoch, args):
+            full_t0 = time.perf_counter()
+            full_metrics = evaluate(model, val_loader, device)
+            full_eval_seconds = time.perf_counter() - full_t0
+            add_full_metric_aliases(latest_metrics, full_metrics)
+            latest_metrics["eval_full_seconds"] = float(full_eval_seconds)
         append_metrics(out_dir / "metrics.jsonl", latest_metrics, args)
         (out_dir / "metrics_latest.json").write_text(json.dumps(json_clean(latest_metrics), indent=2), encoding="utf-8")
         save_and_upload(out_dir, args, model, optimizer, scheduler, scaler, epoch, global_step, latest_metrics)
@@ -175,10 +199,23 @@ def train(args: argparse.Namespace) -> dict[str, float]:
         print(
             f"epoch {epoch:03d}: lr={epoch_lr:.6g} train_loss={train_loss:.6g} "
             f"val_loss={latest_metrics['val_loss']:.6g} "
-            f"gamma3d_3pct_3mm={latest_metrics['gamma3d_3pct_3mm']:.2f}% "
+            f"gamma(sub)={latest_metrics['gamma3d_3pct_3mm']:.2f}% "
+            f"{format_full_gamma(latest_metrics)}"
             f"rmse={latest_metrics['rmse_pct']:.2f}% "
             f"best_gamma_so_far={best_gamma:.2f}%@epoch{best_epoch}"
+            f" timing=train:{train_seconds:.2f}s eval_sub:{sub_eval_seconds:.2f}s"
+            f"{format_full_eval_seconds(full_eval_seconds)}"
             f"{' best_checkpoint_updated' if best_updated else ''}",
+            flush=True,
+        )
+    best_full_metrics = evaluate_best_checkpoint_on_full_val(out_dir, model, val_loader, device)
+    if best_full_metrics:
+        latest_metrics.update(best_full_metrics)
+        (out_dir / "metrics_best_full.json").write_text(json.dumps(json_clean(best_full_metrics), indent=2), encoding="utf-8")
+        print(
+            f"best checkpoint full eval: gamma(full)={best_full_metrics['best_gamma3d_3pct_3mm_full']:.2f}% "
+            f"val_loss(full)={best_full_metrics['best_val_loss_full']:.6g} "
+            f"rmse(full)={best_full_metrics['best_rmse_pct_full']:.2f}%",
             flush=True,
         )
     return latest_metrics
@@ -352,6 +389,7 @@ def build_model(args: argparse.Namespace) -> Bragg3D | DoTA3D:
 
 
 def build_loaders(args: argparse.Namespace) -> tuple[DataLoader, DataLoader, str]:
+    workers = loader_worker_count(args)
     try:
         loaders = make_doserad_loaders(
             args.root,
@@ -364,9 +402,17 @@ def build_loaders(args: argparse.Namespace) -> tuple[DataLoader, DataLoader, str
             lateral_size=int(args.lateral_size),
             lateral_extent_mm=float(args.lateral_extent_mm),
             rebuild_cache=bool(args.rebuild_cache),
-            num_workers=int(args.num_workers),
+            num_workers=0,
         )
-        return loaders[0], loaders[1], "doserad"
+        train_loader = clone_loader(
+            loaders[0].dataset,
+            args,
+            shuffle=True,
+            generator=torch.Generator().manual_seed(int(args.seed) + 1),
+            workers=workers,
+        )
+        val_loader = clone_loader(loaders[1].dataset, args, shuffle=False, workers=workers)
+        return train_loader, val_loader, "doserad"
     except Exception as exc:
         if not args.fast:
             raise
@@ -381,9 +427,85 @@ def build_loaders(args: argparse.Namespace) -> tuple[DataLoader, DataLoader, str
         val_len = max(1, int(round(len(ds) * float(args.val_frac))))
         train_len = len(ds) - val_len
         train_ds, val_ds = torch.utils.data.random_split(ds, [train_len, val_len], generator=gen)
-        train_loader = DataLoader(train_ds, batch_size=int(args.batch_size), shuffle=True, generator=gen)
-        val_loader = DataLoader(val_ds, batch_size=int(args.batch_size), shuffle=False)
+        train_loader = clone_loader(
+            train_ds,
+            args,
+            shuffle=True,
+            generator=torch.Generator().manual_seed(int(args.seed) + 1),
+            workers=workers,
+        )
+        val_loader = clone_loader(val_ds, args, shuffle=False, workers=workers)
         return train_loader, val_loader, "synthetic"
+
+
+def loader_worker_count(args: argparse.Namespace) -> int:
+    requested = getattr(args, "num_workers", None)
+    if requested is not None:
+        return max(0, int(requested))
+    if bool(getattr(args, "fast", False)):
+        return 0
+    return min(8, os.cpu_count() or 1)
+
+
+def clone_loader(
+    dataset: Dataset | Subset,
+    args: argparse.Namespace,
+    *,
+    shuffle: bool,
+    workers: int,
+    generator: torch.Generator | None = None,
+) -> DataLoader:
+    return DataLoader(
+        dataset,
+        batch_size=int(args.batch_size),
+        shuffle=bool(shuffle),
+        generator=generator,
+        num_workers=int(workers),
+        pin_memory=True,
+        persistent_workers=bool(workers > 0),
+    )
+
+
+def make_eval_subsample_loader(val_loader: DataLoader, args: argparse.Namespace) -> DataLoader:
+    n_val = len(val_loader.dataset)
+    n_sub = min(max(1, int(args.eval_subsample)), n_val) if n_val > 0 else 0
+    if n_sub >= n_val:
+        dataset = val_loader.dataset
+    else:
+        rng = np.random.default_rng(int(args.seed))
+        indices = np.sort(rng.choice(n_val, size=n_sub, replace=False)).astype(np.int64).tolist()
+        dataset = Subset(val_loader.dataset, indices)
+    return DataLoader(
+        dataset,
+        batch_size=val_loader.batch_size,
+        shuffle=False,
+        num_workers=val_loader.num_workers,
+        pin_memory=True,
+        persistent_workers=bool(val_loader.num_workers > 0),
+    )
+
+
+def should_run_full_eval(epoch: int, args: argparse.Namespace) -> bool:
+    full_eval_every = int(args.full_eval_every)
+    return full_eval_every > 0 and int(epoch) % full_eval_every == 0
+
+
+def add_full_metric_aliases(metrics: dict[str, float], full_metrics: dict[str, float]) -> None:
+    for key, value in full_metrics.items():
+        metrics[f"{key}_full"] = float(value)
+
+
+def format_full_gamma(metrics: dict[str, float]) -> str:
+    value = metrics.get("gamma3d_3pct_3mm_full")
+    if value is None or not np.isfinite(float(value)):
+        return ""
+    return f"gamma(full)={float(value):.2f}% "
+
+
+def format_full_eval_seconds(seconds: float) -> str:
+    if not np.isfinite(float(seconds)):
+        return ""
+    return f" eval_full:{float(seconds):.2f}s"
 
 
 def train_step(
@@ -398,9 +520,9 @@ def train_step(
     grad_clip: float = 1.0,
     distal_weight: float = 3.0,
 ) -> float:
-    x = batch["x"].to(device=device, dtype=torch.float32)
-    target = batch["dose"].to(device=device, dtype=torch.float32)
-    scalars = batch["scalars"].to(device=device, dtype=torch.float32)
+    x = batch["x"].to(device=device, dtype=torch.float32, non_blocking=True)
+    target = batch["dose"].to(device=device, dtype=torch.float32, non_blocking=True)
+    scalars = batch["scalars"].to(device=device, dtype=torch.float32, non_blocking=True)
     optimizer.zero_grad(set_to_none=True)
     with torch.autocast(device_type="cuda", enabled=amp_enabled):
         pred = model(x, scalars)["dose"]
@@ -454,17 +576,21 @@ def evaluate(model: Bragg3D, loader: DataLoader, device: torch.device) -> dict[s
     gamma_values: list[float] = []
     rmse_values: list[float] = []
     r80_errors: list[float] = []
+    n_seen = 0
     for batch in loader:
-        x = batch["x"].to(device=device, dtype=torch.float32)
-        target_t = batch["dose"].to(device=device, dtype=torch.float32)
-        scalars = batch["scalars"].to(device=device, dtype=torch.float32)
+        x = batch["x"].to(device=device, dtype=torch.float32, non_blocking=True)
+        target_t = batch["dose"].to(device=device, dtype=torch.float32, non_blocking=True)
+        scalars = batch["scalars"].to(device=device, dtype=torch.float32, non_blocking=True)
         pred_t = model(x, scalars)["dose"]
         losses.append(float(doserad_relative_loss(pred_t, target_t).cpu()))
         pred = pred_t.detach().cpu().numpy()
         ref = batch["dose"].numpy()
         spacing = batch["spacing_mm"].numpy()
         for i in range(ref.shape[0]):
-            gamma_values.append(gamma_index_3d(pred[i], ref[i], spacing[i], dose_pct=3.0, dta_mm=3.0))
+            n_seen += 1
+            gamma = safe_gamma_index_3d(pred[i], ref[i], spacing[i], dose_pct=3.0, dta_mm=3.0)
+            if np.isfinite(gamma):
+                gamma_values.append(gamma)
             rmse_values.append(rmse_pct_3d(pred[i], ref[i], low_dose_threshold=0.02))
             pred_r80 = r80_mm_from_profile(depth_profile(pred[i]), float(spacing[i][0]))
             ref_r80 = r80_mm_from_profile(depth_profile(ref[i]), float(spacing[i][0]))
@@ -475,8 +601,83 @@ def evaluate(model: Bragg3D, loader: DataLoader, device: torch.device) -> dict[s
         "gamma3d_3pct_3mm": nanmean(gamma_values),
         "rmse_pct": nanmean(rmse_values),
         "r80_error_mm": nanmean(r80_errors),
-        "n_val_beamlets": float(len(gamma_values)),
+        "n_val_beamlets": float(n_seen),
+        "n_gamma_beamlets": float(len(gamma_values)),
     }
+
+
+def safe_gamma_index_3d(
+    pred: np.ndarray,
+    ref: np.ndarray,
+    spacing_mm: np.ndarray,
+    *,
+    dose_pct: float,
+    dta_mm: float,
+    low_dose_threshold: float = 0.1,
+    peak_epsilon: float = 1e-8,
+    max_radius_voxels: int = 8,
+) -> float:
+    ref_arr = np.asarray(ref, dtype=np.float64)
+    peak = float(np.max(ref_arr)) if ref_arr.size else 0.0
+    if not np.isfinite(peak) or peak <= float(peak_epsilon):
+        return float("nan")
+    spacing = np.asarray(tuple(spacing_mm), dtype=np.float64)
+    if spacing.shape != (3,) or np.any(~np.isfinite(spacing)) or np.any(spacing <= 0.0):
+        return float("nan")
+    radii = np.ceil(float(dta_mm) / spacing).astype(int)
+    if np.any(radii > int(max_radius_voxels)):
+        return bounded_gamma_index_3d(
+            pred,
+            ref_arr,
+            spacing,
+            dose_pct=dose_pct,
+            dta_mm=dta_mm,
+            low_dose_threshold=low_dose_threshold,
+            max_radius_voxels=max_radius_voxels,
+        )
+    return gamma_index_3d(pred, ref_arr, spacing, dose_pct=dose_pct, dta_mm=dta_mm, low_dose_threshold=low_dose_threshold)
+
+
+def bounded_gamma_index_3d(
+    pred: np.ndarray,
+    ref: np.ndarray,
+    spacing_mm: np.ndarray,
+    *,
+    dose_pct: float,
+    dta_mm: float,
+    low_dose_threshold: float,
+    max_radius_voxels: int,
+) -> float:
+    pred_arr = np.asarray(pred, dtype=np.float64)
+    ref_arr = np.asarray(ref, dtype=np.float64)
+    if pred_arr.shape != ref_arr.shape or pred_arr.ndim != 3:
+        return float("nan")
+
+    peak = float(np.max(ref_arr))
+    dose_norm = (float(dose_pct) / 100.0) * peak
+    if not np.isfinite(dose_norm) or dose_norm <= 0.0:
+        return float("nan")
+    points = np.argwhere(ref_arr >= float(low_dose_threshold) * peak)
+    if points.size == 0:
+        return float("nan")
+
+    spacing = np.asarray(spacing_mm, dtype=np.float64)
+    radii = np.minimum(np.ceil(float(dta_mm) / spacing).astype(int), int(max_radius_voxels))
+    passed = 0
+    for iz, iy, ix in points:
+        z0, z1 = max(0, iz - radii[0]), min(ref_arr.shape[0], iz + radii[0] + 1)
+        y0, y1 = max(0, iy - radii[1]), min(ref_arr.shape[1], iy + radii[1] + 1)
+        x0, x1 = max(0, ix - radii[2]), min(ref_arr.shape[2], ix + radii[2] + 1)
+        zz, yy, xx = np.ogrid[z0:z1, y0:y1, x0:x1]
+        dist_term = (
+            ((zz - iz) * spacing[0] / dta_mm) ** 2
+            + ((yy - iy) * spacing[1] / dta_mm) ** 2
+            + ((xx - ix) * spacing[2] / dta_mm) ** 2
+        )
+        dose_term = ((pred_arr[z0:z1, y0:y1, x0:x1] - ref_arr[iz, iy, ix]) / dose_norm) ** 2
+        if float(np.sqrt(np.min(dist_term + dose_term))) <= 1.0:
+            passed += 1
+    return float(100.0 * passed / len(points))
 
 
 def save_and_upload(
@@ -496,6 +697,34 @@ def save_and_upload(
     shutil.copy2(ckpt_path, latest)
     upload_to_gcs([ckpt_path, latest, out_dir / "metrics.jsonl", out_dir / "metrics_latest.json"], getattr(args, "gcs", None))
     return ckpt_path
+
+
+def evaluate_best_checkpoint_on_full_val(
+    out_dir: Path,
+    model: Bragg3D,
+    val_loader: DataLoader,
+    device: torch.device,
+) -> dict[str, float]:
+    best_path = out_dir / "best.pt"
+    if not best_path.exists():
+        return {}
+    try:
+        load_checkpoint(best_path, model, map_location=device)
+    except Exception as exc:
+        print(f"warning: unable to re-evaluate best checkpoint {best_path}: {exc}", flush=True)
+        return {}
+    t0 = time.perf_counter()
+    full_metrics = evaluate(model, val_loader, device)
+    elapsed = time.perf_counter() - t0
+    return {
+        "best_val_loss_full": float(full_metrics["val_loss"]),
+        "best_gamma3d_3pct_3mm_full": float(full_metrics["gamma3d_3pct_3mm"]),
+        "best_rmse_pct_full": float(full_metrics["rmse_pct"]),
+        "best_r80_error_mm_full": float(full_metrics["r80_error_mm"]),
+        "best_n_val_beamlets_full": float(full_metrics["n_val_beamlets"]),
+        "best_n_gamma_beamlets_full": float(full_metrics["n_gamma_beamlets"]),
+        "best_full_eval_seconds": float(elapsed),
+    }
 
 
 def save_checkpoint(
@@ -596,8 +825,8 @@ def initialize_lazy_modules(model: Bragg3D, loader: DataLoader, device: torch.de
     model.eval()
     with torch.no_grad():
         model(
-            batch["x"].to(device=device, dtype=torch.float32),
-            batch["scalars"].to(device=device, dtype=torch.float32),
+            batch["x"].to(device=device, dtype=torch.float32, non_blocking=True),
+            batch["scalars"].to(device=device, dtype=torch.float32, non_blocking=True),
         )
 
 
