@@ -178,3 +178,18 @@ epoch 30) -> doubling data 4200->8000 did NOT raise gamma. So at this scale the 
 is MODEL CAPACITY, not data. Next: run6 = bigger DoTA3D (d320/L10) on the same 8000
 beamlets to test the capacity lever. Path to papers now precise: bigger DoTA architecture
 + full ~80k data + convergence.
+
+### Overnight result #5 — capacity lever is COMPUTE-bound (bigger model)
+Bigger DoTA3D (d320/L10) on 8000 beamlets (run6) trained SLOWER (36% at epoch 19 vs
+~42% for d192/L6) and cannot converge within the single-T4 8h cap. So a bigger model
+needs more compute to reveal its higher ceiling. COMPLETE ABLATION of the path to the
+papers' ~99%:
+| lever | change | effect |
+|---|---|---|
+| architecture | Bragg3D -> DoTA-faithful | 28% -> 57% (DOMINANT) |
+| data | 4200 -> 8000 beamlets | saturated ~57% at d192 |
+| capacity | d192/L6 -> d320/L10 | slower, compute-bound, <=57% in budget |
+**Precise conclusion:** reaching 99% needs a bigger DoTA-faithful model trained to
+CONVERGENCE on the full ~80k-beamlet dataset = multi-GPU or multi-day compute (a
+resourcing decision). Overnight single-T4 runs peak at ~57%. Total GPU spend ~\$3,
+all VMs self-deleting/cost-capped.
