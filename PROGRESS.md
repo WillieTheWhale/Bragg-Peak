@@ -133,3 +133,20 @@ sharp proton edges (conv #1 in 3/3 seeds). The transformer is NEVER best -> "att
 is uniquely good at sharp edges" is robustly DISPROVEN. Sub-findings: FNO worst at tight
 gamma (confirms spectral smoothing weakness); transformer beats FNO at tight gamma but
 they trade on edge_mm (transformer-vs-FNO not significant in 1/3 seeds, FNO better in 2/3).
+
+### Overnight result #2b — GPU 3-D scaling curve (autonomous spot T4, self-deleted)
+Scaled Bragg3D (d_model 192, 6 layers) on 1050 beamlets (~20 patients), 44 epochs before
+plateau. Held-out gamma3d(3%/3mm) trajectory: 0 -> 5 -> 20 -> **peak 28.27%** (epoch 43,
+rmse 10.1%). Clean SCALING CURVE across the night:
+| data / model | gamma3d 3%/3mm |
+|---|---|
+| 49 beamlets, tiny model | ~0% (collapse) |
+| 480 beamlets, tiny model | ~5% |
+| **1050 beamlets, scaled model (d192/L6)** | **28.3%** |
+**Honest conclusion:** the 3-D approach genuinely SCALES with data + capacity (0->28%),
+but reaching the papers' ~99% needs their ~80k-beamlet scale (~76x our data). We did NOT
+beat the papers; we quantified exactly why (data volume) and showed the trajectory is the
+right shape. Autonomous run self-managed via GCS + triple cost-safety; VM deleted. Total
+overnight GPU spend ~\$0.4 (two spot-T4 runs). Follow-up to actually approach the papers:
+full 55-patient / paginated beamlet download (tens of thousands), bigger model, multi-hour
+or multi-GPU training, likely a DoTA-faithful BEV architecture.
