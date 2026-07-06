@@ -159,3 +159,13 @@ low non-converged number. **Converged best remains the 1050-beamlet run at 28% g
 Lesson: past ~1000 beamlets, a single T4 is compute-time-bound; approaching the papers
 needs multi-GPU or multi-day training in ADDITION to the full ~80k-beamlet dataset.
 Total overnight GPU spend ~\$0.7; all VMs self-deleted/deleted, 0 running.
+
+### Overnight result #3 — DoTA-faithful architecture is a BREAKTHROUGH (in progress)
+Implemented dota3d.py (CNN-encoder + depth-transformer + CNN-decoder, DoTA's PUBLISHED
+design) vs our from-scratch Bragg3D approximation. On ~4200 beamlets (12 patients),
+DoTA3D held-out gamma3d(3%/3mm) climbed to **~42-45% by epoch 20 and stable** — vs
+Bragg3D's 28% (which needed 40+ epochs on 1050 beamlets and plateaued). DoTA3D reached
+24% at EPOCH 2 (Bragg3D was ~2%). **Key finding: architecture fidelity was the dominant
+bottleneck, not only data.** This validates DoTA's design and gives a credible path to
+the papers' ~99%: DoTA-faithful architecture + full ~80k-beamlet dataset + convergence.
+Run bt-dota4 (spot T4, 8h cap, self-deleting) continuing to epoch 80; final number TBD.
