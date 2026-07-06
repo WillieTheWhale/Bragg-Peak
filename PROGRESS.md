@@ -168,4 +168,6 @@ Bragg3D's 28% (which needed 40+ epochs on 1050 beamlets and plateaued). DoTA3D r
 24% at EPOCH 2 (Bragg3D was ~2%). **Key finding: architecture fidelity was the dominant
 bottleneck, not only data.** This validates DoTA's design and gives a credible path to
 the papers' ~99%: DoTA-faithful architecture + full ~80k-beamlet dataset + convergence.
-Run bt-dota4 (spot T4, 8h cap, self-deleting) continuing to epoch 80; final number TBD.
+**Run4 final: DoTA3D plateaued at gamma3d(3%/3mm) = 57.3%, rmse 6.0% on 4200 beamlets**
+(epoch 52; vs Bragg3D 28% / rmse ~10-22%). Architecture fidelity ~doubled gamma at the
+same data scale. Launching run5 (DoTA3D + ~8000 beamlets) to push further via data scale.
