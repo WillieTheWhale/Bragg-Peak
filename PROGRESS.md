@@ -123,3 +123,13 @@ beamlets (~170x more). Competitive 3-D gamma needs the full dataset + serious co
 the pipeline + cloud harness are proven and ready for that. GPU cost ~$0.06 (spot T4,
 25 min); VM deleted. Also fixed: gcp_train.sh --no-tail teardown bug, image-family, and
 a memory-safe batch size (OOM at bs=32 on 30GB -> bs=8).
+
+### Overnight result #1b — Sharp-data test CONFIRMED across 3 seeds
+Distal-edge (mm), all seeds: conv1d 0.250/0.257/0.253 (RANK 1 EVERY SEED) <
+fno1d 0.684/0.491/0.465 & transformer 0.582/0.773/0.750 (trade #2/#3).
+g2/2mm: conv1d ~94-95% (best all seeds); transformer 76-86%; fno1d 3-11%.
+**Robust honest conclusion:** a simple 1-D CONV beats both the transformer and FNO on
+sharp proton edges (conv #1 in 3/3 seeds). The transformer is NEVER best -> "attention
+is uniquely good at sharp edges" is robustly DISPROVEN. Sub-findings: FNO worst at tight
+gamma (confirms spectral smoothing weakness); transformer beats FNO at tight gamma but
+they trade on edge_mm (transformer-vs-FNO not significant in 1/3 seeds, FNO better in 2/3).
