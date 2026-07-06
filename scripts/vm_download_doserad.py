@@ -34,12 +34,22 @@ def _list_dose_files(pat: str) -> list[tuple[str, int]]:
 
 
 def _get(url: str) -> bytes:
-    for _ in range(4):
+    import time
+    last: Exception = RuntimeError("no attempt")
+    for attempt in range(8):
         try:
-            with urllib.request.urlopen(url, timeout=60) as r:
+            with urllib.request.urlopen(url, timeout=90) as r:
                 return r.read()
-        except Exception as e:  # noqa: BLE001
+        except urllib.error.HTTPError as e:  # noqa: PERF203
             last = e
+            if e.code == 429:  # HF rate limit -> exponential backoff + jitter
+                time.sleep(min(60.0, 2.0 ** attempt) + (os.getpid() % 5) * 0.1)
+                continue
+            if e.code in (500, 502, 503, 504):
+                time.sleep(2.0 ** attempt); continue
+            raise
+        except Exception as e:  # noqa: BLE001
+            last = e; time.sleep(1.0 + attempt)
     raise last
 
 
@@ -72,7 +82,7 @@ def download(patients: list[str], per_patient: int, root: str = "data/doserad202
             return 0
 
         from concurrent.futures import ThreadPoolExecutor
-        with ThreadPoolExecutor(max_workers=32) as ex:  # concurrent -> ~10x faster
+        with ThreadPoolExecutor(max_workers=8) as ex:  # concurrent -> ~10x faster
             n = sum(ex.map(_one, paths))
         total += n
         print(f"{pat}: {n} beamlets + ct + plan", flush=True)
