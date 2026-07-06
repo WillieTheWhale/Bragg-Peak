@@ -92,3 +92,10 @@ each phase is gated (tests + metrics pass) before the next begins.
 
 ## Log
 - Phase 0 started.
+
+## Overnight run (goal: beat 2026 papers) — started 2026-07-06
+GCP verified from Claude Code terminal (project braggtransporter, us-central1-f, bucket
+gs://braggtransporter-braggtransporter, 1x T4/L4 spot quota). Wave 1 Codex agents:
+O1 sharp-data architecture test (MPS), O2 DoseRAD 3-D normalization+multi-patient+GPU
+train script, O3 GCP spot-GPU harness. Targets: DoTA 99.37% gamma 1%/3mm; ADoTA
+99.4-99.87% beamlet / 98.4-98.9% plan-level 2%/2mm.
