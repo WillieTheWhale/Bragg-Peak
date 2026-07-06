@@ -193,3 +193,23 @@ papers' ~99%:
 CONVERGENCE on the full ~80k-beamlet dataset = multi-GPU or multi-day compute (a
 resourcing decision). Overnight single-T4 runs peak at ~57%. Total GPU spend ~\$3,
 all VMs self-deleting/cost-capped.
+
+### Overnight result #6 — resolution lever also plateaus ~57%; the ceiling is ROBUST
+Finer BEV resolution (48x48x96, 2mm voxels vs prior 4mm) on 4000 beamlets (run7):
+gamma oscillated 50-60% (epoch-1 60% was noise; ~57% converged range) = COMPARABLE to
+run4's 57% at coarse res, but ~15 min/epoch (compute-bound). So resolution does NOT
+break the ceiling.
+
+## EXHAUSTIVE lever characterization (single-T4 overnight budget)
+| lever | tested range | result |
+|---|---|---|
+| **architecture** | Bragg3D -> DoTA-faithful | **28% -> 57%** (the ONE big win) |
+| data | 1050 -> 4200 -> 8000 beamlets | 28 -> 57 -> 57% (saturates at d192) |
+| capacity | d192/L6 -> d320/L10 | compute-bound, <=57% |
+| resolution | 24x24x64 -> 48x48x96 | ~57%, compute-bound |
+**DEFINITIVE conclusion:** within a single spot T4, gamma3d(3%/3mm) plateaus ~**57%**
+robustly across data/capacity/resolution once the DoTA-faithful architecture is used.
+Reaching the papers' ~99% is NOT achievable at this compute class -- it requires the
+full ~80k-beamlet dataset + a bigger model trained to convergence = multi-GPU or
+multi-day compute (a resourcing decision beyond overnight/1-T4). All 7 GPU runs
+self-deleted/deleted; total spend ~\$4; 0 orphaned instances.
