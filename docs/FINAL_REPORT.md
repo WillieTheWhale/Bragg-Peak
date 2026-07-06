@@ -2,6 +2,35 @@
 
 _Research software only. No clinical claims, ever._
 
+## Overnight cloud run (2026-07-06) — did NOT beat the 2026 papers; two honest findings instead
+
+Goal: beat DoTA/ADoTA gamma by training the transformer at scale on GCP. **Outcome:
+not achieved** — beating 99%+ gamma needs the papers' data scale (~80k beamlets), which
+one spot T4 overnight cannot reach. Two rigorous findings were produced instead:
+
+1. **Sharp-data architecture test (3 seeds) refutes the transformer-edge thesis.** On
+   heterogeneous sharp 1-D edges at matched ~0.93M params, a simple **1-D conv wins the
+   distal edge in ALL 3 seeds** (~0.25 mm, ~94% γ 2%/2mm). The **transformer is never
+   best** (#2/#3), so "attention is uniquely good at sharp edges" (the investigation
+   memo's hypothesis, and this report's original finding #2 below) is **disproven**.
+   FNO is worst at tight gamma (confirming its spectral-smoothing weakness), and the
+   transformer beats FNO at tight gamma but they trade on raw edge error. Caveat: small
+   data (238 samples) — and DoTA/ADoTA's transformer success is at *large* scale, so this
+   likely reflects that transformers are data-hungry, not that attention is useless.
+   Results: `docs/results/sharp_multiseed.log`, `sharp_comparison.csv`.
+2. **GPU 3-D scaling confirms the collapse is data scarcity, not a bug.** The full cloud
+   pipeline ran on a spot T4 (real DoseRAD2026 `.mha`, CUDA + AMP, GCS checkpoints, clean
+   teardown, ~$0.06). Scaling 10× (49→480 beamlets) still gave γ3d ~0–5% — DoTA used
+   ~170× more data. The pipeline and cost-safe harness (`scripts/gcp_train.sh`) are proven
+   and ready for a full-dataset cloud run; data volume is the wall.
+
+Net: the transformer is **not** the obviously-right backbone at laptop/small-cloud scale;
+its documented wins (DoTA/ADoTA) live at data scales we did not reach. Reported honestly
+rather than spun into a false "we beat the papers."
+
+---
+
+
 This report consolidates the six-phase build of **BraggTransporter**, the v3.1 plan
 in `brag_deep_learning/six-month-model-plan.md`. It is written to be honest about
 what was achieved on a 48 GB M4 Max MacBook (no CUDA) versus what remains
