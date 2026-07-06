@@ -40,7 +40,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--epochs", type=int, default=20)
     parser.add_argument("--batch-size", type=int, default=2)
     parser.add_argument("--lr", type=float, default=3e-4)
-    parser.add_argument("--weight-decay", type=float, default=1e-4)
+    parser.add_argument("--lr-schedule", choices=["cosine", "warmrestart", "dota"], default="cosine")
+    parser.add_argument("--restart-epochs", type=int, default=28)
+    parser.add_argument("--lr-halve-epochs", type=int, default=4)
+    parser.add_argument("--weight-decay", type=float, default=0.05)
+    parser.add_argument("--save-best-by", choices=["gamma", "val_loss"], default="gamma")
     parser.add_argument("--model", default="bragg3d", choices=["bragg3d", "dota3d"])
     parser.add_argument("--device", default="cuda", choices=["auto", "cuda", "mps", "cpu"])
     parser.add_argument("--seed", type=int, default=0)
@@ -68,7 +72,8 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     if args.fast:
-        args.epochs = min(args.epochs, 2)
+        if int(args.epochs) == 20:
+            args.epochs = 2
         args.depth_size = min(args.depth_size, 12)
         args.lateral_size = min(args.lateral_size, 8)
         args.batch_size = min(args.batch_size, 2)
@@ -92,8 +97,7 @@ def train(args: argparse.Namespace) -> dict[str, float]:
     model = build_model(args).to(device)
     initialize_lazy_modules(model, train_loader, device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=float(args.lr), weight_decay=float(args.weight_decay))
-    total_steps = max(1, int(args.epochs) * max(1, len(train_loader)))
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=total_steps)
+    scheduler = build_lr_scheduler(args, optimizer, steps_per_epoch=max(1, len(train_loader)))
     amp_enabled = device.type == "cuda"
     scaler = torch.amp.GradScaler("cuda", enabled=amp_enabled)
 
@@ -116,7 +120,11 @@ def train(args: argparse.Namespace) -> dict[str, float]:
     )
 
     latest_metrics: dict[str, float] = {}
+    best_metrics = load_existing_best_metrics(out_dir, str(args.save_best_by))
+    best_gamma_metrics = dict(best_metrics) if str(args.save_best_by) == "gamma" and best_metrics else None
     for epoch in range(start_epoch, int(args.epochs) + 1):
+        step_lr_epoch_start(scheduler, str(args.lr_schedule), epoch)
+        epoch_lr = current_lr(optimizer)
         model.train()
         losses: list[float] = []
         for batch in train_loader:
@@ -126,7 +134,7 @@ def train(args: argparse.Namespace) -> dict[str, float]:
                 optimizer,
                 device,
                 scaler=scaler,
-                scheduler=scheduler,
+                scheduler=scheduler if str(args.lr_schedule) == "cosine" else None,
                 amp_enabled=amp_enabled,
                 grad_clip=float(args.grad_clip),
                 distal_weight=float(args.distal_weight),
@@ -142,17 +150,194 @@ def train(args: argparse.Namespace) -> dict[str, float]:
         latest_metrics["train_loss"] = train_loss
         latest_metrics["epoch"] = float(epoch)
         latest_metrics["global_step"] = float(global_step)
+        latest_metrics["lr"] = epoch_lr
         append_metrics(out_dir / "metrics.jsonl", latest_metrics, args)
         (out_dir / "metrics_latest.json").write_text(json.dumps(json_clean(latest_metrics), indent=2), encoding="utf-8")
         save_and_upload(out_dir, args, model, optimizer, scheduler, scaler, epoch, global_step, latest_metrics)
+        if is_better_best(latest_metrics, best_gamma_metrics, "gamma"):
+            best_gamma_metrics = dict(latest_metrics)
+        best_metrics, best_updated = maybe_save_best_checkpoint(
+            out_dir,
+            args,
+            model,
+            optimizer,
+            scheduler,
+            scaler,
+            epoch,
+            global_step,
+            latest_metrics,
+            best_metrics,
+        )
+        best_epoch = int(best_gamma_metrics.get("epoch", epoch)) if best_gamma_metrics else epoch
+        best_gamma = (
+            float(best_gamma_metrics.get("gamma3d_3pct_3mm", float("nan"))) if best_gamma_metrics else float("nan")
+        )
         print(
-            f"epoch {epoch:03d}: train_loss={train_loss:.6g} "
+            f"epoch {epoch:03d}: lr={epoch_lr:.6g} train_loss={train_loss:.6g} "
             f"val_loss={latest_metrics['val_loss']:.6g} "
             f"gamma3d_3pct_3mm={latest_metrics['gamma3d_3pct_3mm']:.2f}% "
-            f"rmse={latest_metrics['rmse_pct']:.2f}%",
+            f"rmse={latest_metrics['rmse_pct']:.2f}% "
+            f"best_gamma_so_far={best_gamma:.2f}%@epoch{best_epoch}"
+            f"{' best_checkpoint_updated' if best_updated else ''}",
             flush=True,
         )
     return latest_metrics
+
+
+class DoTALRScheduler:
+    """DoTA epoch schedule: halve every N epochs, hard restart every M epochs."""
+
+    def __init__(self, optimizer: torch.optim.Optimizer, *, lr_halve_epochs: int = 4, restart_epochs: int = 28) -> None:
+        if int(lr_halve_epochs) <= 0:
+            raise ValueError("lr_halve_epochs must be positive.")
+        if int(restart_epochs) <= 0:
+            raise ValueError("restart_epochs must be positive.")
+        self.optimizer = optimizer
+        self.lr_halve_epochs = int(lr_halve_epochs)
+        self.restart_epochs = int(restart_epochs)
+        self.base_lrs = [float(group["lr"]) for group in optimizer.param_groups]
+        self.last_epoch = 0
+
+    def step(self, epoch: int | None = None) -> None:
+        if epoch is None:
+            epoch = self.last_epoch + 1
+        self.last_epoch = int(epoch)
+        factor = dota_lr_factor(self.last_epoch, self.lr_halve_epochs, self.restart_epochs)
+        for group, base_lr in zip(self.optimizer.param_groups, self.base_lrs):
+            group["lr"] = float(base_lr) * factor
+
+    def state_dict(self) -> dict[str, Any]:
+        return {
+            "base_lrs": list(self.base_lrs),
+            "last_epoch": self.last_epoch,
+            "lr_halve_epochs": self.lr_halve_epochs,
+            "restart_epochs": self.restart_epochs,
+        }
+
+    def load_state_dict(self, state_dict: dict[str, Any]) -> None:
+        self.base_lrs = [float(v) for v in state_dict.get("base_lrs", self.base_lrs)]
+        self.last_epoch = int(state_dict.get("last_epoch", self.last_epoch))
+        self.lr_halve_epochs = int(state_dict.get("lr_halve_epochs", self.lr_halve_epochs))
+        self.restart_epochs = int(state_dict.get("restart_epochs", self.restart_epochs))
+        self.step(self.last_epoch)
+
+    def get_last_lr(self) -> list[float]:
+        return [float(group["lr"]) for group in self.optimizer.param_groups]
+
+
+def dota_lr_factor(epoch: int, lr_halve_epochs: int, restart_epochs: int) -> float:
+    epoch_in_cycle = (int(epoch) - 1) % int(restart_epochs)
+    halvings = epoch_in_cycle // int(lr_halve_epochs)
+    return 0.5 ** int(halvings)
+
+
+def build_lr_scheduler(
+    args: argparse.Namespace,
+    optimizer: torch.optim.Optimizer,
+    *,
+    steps_per_epoch: int,
+) -> torch.optim.lr_scheduler.LRScheduler | DoTALRScheduler:
+    schedule = str(args.lr_schedule)
+    if schedule == "cosine":
+        total_steps = max(1, int(args.epochs) * max(1, int(steps_per_epoch)))
+        return torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=total_steps)
+    if schedule == "warmrestart":
+        return torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+            optimizer,
+            T_0=max(1, int(args.restart_epochs)),
+            T_mult=1,
+        )
+    if schedule == "dota":
+        return DoTALRScheduler(
+            optimizer,
+            lr_halve_epochs=max(1, int(args.lr_halve_epochs)),
+            restart_epochs=max(1, int(args.restart_epochs)),
+        )
+    raise ValueError(f"unknown lr schedule {schedule!r}")
+
+
+def step_lr_epoch_start(
+    scheduler: torch.optim.lr_scheduler.LRScheduler | DoTALRScheduler,
+    schedule: str,
+    epoch: int,
+) -> None:
+    if schedule == "warmrestart":
+        scheduler.step(int(epoch) - 1)
+    elif schedule == "dota":
+        scheduler.step(int(epoch))
+
+
+def current_lr(optimizer: torch.optim.Optimizer) -> float:
+    return float(optimizer.param_groups[0]["lr"])
+
+
+def best_metric_name(save_best_by: str) -> str:
+    if save_best_by == "gamma":
+        return "gamma3d_3pct_3mm"
+    if save_best_by == "val_loss":
+        return "val_loss"
+    raise ValueError(f"unknown save_best_by {save_best_by!r}")
+
+
+def is_better_best(metrics: dict[str, float], best_metrics: dict[str, float] | None, save_best_by: str) -> bool:
+    key = best_metric_name(save_best_by)
+    value = float(metrics.get(key, float("nan")))
+    if not np.isfinite(value):
+        return False
+    if not best_metrics:
+        return True
+    best_value = float(best_metrics.get(key, float("nan")))
+    if not np.isfinite(best_value):
+        return True
+    if save_best_by == "gamma":
+        return value > best_value
+    return value < best_value
+
+
+def maybe_save_best_checkpoint(
+    out_dir: Path,
+    args: argparse.Namespace,
+    model: Bragg3D,
+    optimizer: torch.optim.Optimizer,
+    scheduler: torch.optim.lr_scheduler.LRScheduler | DoTALRScheduler,
+    scaler: torch.amp.GradScaler,
+    epoch: int,
+    global_step: int,
+    metrics: dict[str, float],
+    best_metrics: dict[str, float] | None,
+) -> tuple[dict[str, float] | None, bool]:
+    save_best_by = str(args.save_best_by)
+    if not is_better_best(metrics, best_metrics, save_best_by):
+        return best_metrics, False
+
+    updated = dict(metrics)
+    updated["best_epoch"] = float(epoch)
+    updated["best_global_step"] = float(global_step)
+    best_path = out_dir / "best.pt"
+    save_checkpoint(best_path, model, optimizer, scheduler, scaler, epoch, global_step, args, updated)
+    upload_to_gcs([best_path], getattr(args, "gcs", None))
+    return updated, True
+
+
+def load_existing_best_metrics(out_dir: Path, save_best_by: str) -> dict[str, float] | None:
+    best_path = out_dir / "best.pt"
+    if not best_path.exists():
+        return None
+    try:
+        ckpt = torch.load(best_path, map_location="cpu", weights_only=False)
+    except Exception as exc:
+        print(f"warning: unable to read existing best checkpoint {best_path}: {exc}", flush=True)
+        return None
+    saved_args = ckpt.get("args")
+    if isinstance(saved_args, dict) and saved_args.get("save_best_by") not in (None, save_best_by):
+        return None
+    metrics = ckpt.get("metrics")
+    if not isinstance(metrics, dict):
+        return None
+    key = best_metric_name(save_best_by)
+    if key not in metrics:
+        return None
+    return {str(k): float(v) for k, v in metrics.items() if isinstance(v, (int, float))}
 
 
 def build_model(args: argparse.Namespace) -> Bragg3D | DoTA3D:
@@ -299,7 +484,7 @@ def save_and_upload(
     args: argparse.Namespace,
     model: Bragg3D,
     optimizer: torch.optim.Optimizer,
-    scheduler: torch.optim.lr_scheduler.LRScheduler,
+    scheduler: torch.optim.lr_scheduler.LRScheduler | DoTALRScheduler,
     scaler: torch.amp.GradScaler,
     epoch: int,
     global_step: int,
@@ -309,7 +494,7 @@ def save_and_upload(
     save_checkpoint(ckpt_path, model, optimizer, scheduler, scaler, epoch, global_step, args, metrics)
     latest = out_dir / "latest.pt"
     shutil.copy2(ckpt_path, latest)
-    upload_to_gcs([ckpt_path, latest, out_dir / "metrics.jsonl", out_dir / "metrics_latest.json"], args.gcs)
+    upload_to_gcs([ckpt_path, latest, out_dir / "metrics.jsonl", out_dir / "metrics_latest.json"], getattr(args, "gcs", None))
     return ckpt_path
 
 
@@ -317,7 +502,7 @@ def save_checkpoint(
     path: Path,
     model: Bragg3D,
     optimizer: torch.optim.Optimizer,
-    scheduler: torch.optim.lr_scheduler.LRScheduler | None,
+    scheduler: torch.optim.lr_scheduler.LRScheduler | DoTALRScheduler | None,
     scaler: torch.amp.GradScaler | None,
     epoch: int,
     global_step: int,
@@ -346,7 +531,7 @@ def load_checkpoint(
     path: Path,
     model: Bragg3D,
     optimizer: torch.optim.Optimizer | None = None,
-    scheduler: torch.optim.lr_scheduler.LRScheduler | None = None,
+    scheduler: torch.optim.lr_scheduler.LRScheduler | DoTALRScheduler | None = None,
     scaler: torch.amp.GradScaler | None = None,
     *,
     map_location: torch.device | str = "cpu",
