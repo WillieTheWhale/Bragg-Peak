@@ -29,6 +29,7 @@ from braggtransporter.data.doserad import (
     rmse_pct_3d,
 )
 from braggtransporter.models.bragg3d import Bragg3D
+from braggtransporter.models.dota3d import DoTA3D
 
 
 def parse_args() -> argparse.Namespace:
@@ -40,6 +41,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--batch-size", type=int, default=2)
     parser.add_argument("--lr", type=float, default=3e-4)
     parser.add_argument("--weight-decay", type=float, default=1e-4)
+    parser.add_argument("--model", default="bragg3d", choices=["bragg3d", "dota3d"])
     parser.add_argument("--device", default="cuda", choices=["auto", "cuda", "mps", "cpu"])
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--val-frac", type=float, default=0.15)
@@ -87,13 +89,7 @@ def train(args: argparse.Namespace) -> dict[str, float]:
         print(f"download_summary={json.dumps(summary, sort_keys=True)}", flush=True)
 
     train_loader, val_loader, source = build_loaders(args)
-    model = Bragg3D(
-        d_model=int(args.d_model),
-        n_layers=int(args.n_layers),
-        n_heads=int(args.n_heads),
-        d_ff=int(args.d_ff),
-        max_depth=max(128, int(args.depth_size)),
-    ).to(device)
+    model = build_model(args).to(device)
     initialize_lazy_modules(model, train_loader, device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=float(args.lr), weight_decay=float(args.weight_decay))
     total_steps = max(1, int(args.epochs) * max(1, len(train_loader)))
@@ -114,7 +110,7 @@ def train(args: argparse.Namespace) -> dict[str, float]:
 
     print(
         "DoseRAD GPU train: "
-        f"source={source} train={len(train_loader.dataset)} val={len(val_loader.dataset)} "
+        f"model={args.model} source={source} train={len(train_loader.dataset)} val={len(val_loader.dataset)} "
         f"device={device} amp={amp_enabled} params={model.param_count():,}",
         flush=True,
     )
@@ -157,6 +153,17 @@ def train(args: argparse.Namespace) -> dict[str, float]:
             flush=True,
         )
     return latest_metrics
+
+
+def build_model(args: argparse.Namespace) -> Bragg3D | DoTA3D:
+    model_cls = {"bragg3d": Bragg3D, "dota3d": DoTA3D}[str(args.model)]
+    return model_cls(
+        d_model=int(args.d_model),
+        n_layers=int(args.n_layers),
+        n_heads=int(args.n_heads),
+        d_ff=int(args.d_ff),
+        max_depth=max(128, int(args.depth_size)),
+    )
 
 
 def build_loaders(args: argparse.Namespace) -> tuple[DataLoader, DataLoader, str]:

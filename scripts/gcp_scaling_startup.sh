@@ -6,10 +6,10 @@ set -x
 LOG=/var/log/bt_scaling.log
 exec > >(tee -a "$LOG") 2>&1
 BUCKET="gs://braggtransporter-braggtransporter"
-RUN="$BUCKET/runs/scaling3"
+RUN="$BUCKET/runs/dota4"
 # verified real proton patient IDs (paginated complete listing -> ~1080 beamlets each)
-PATIENTS="1ABB006,1ABB011,1ABB020,1ABB021,1ABB030,1ABB031,1ABB035,1ABB036,1ABB039,1ABB041,1ABB042,1ABB045,1ABB061,1ABB067,1ABB070,1ABB078"
-PER_PATIENT=400
+PATIENTS="1ABB006,1ABB011,1ABB020,1ABB021,1ABB030,1ABB031,1ABB035,1ABB036,1ABB039,1ABB041,1ABB042,1ABB045"
+PER_PATIENT=350
 
 push() { gsutil -q cp "$LOG" "$RUN/startup.log" 2>/dev/null || true; }
 finish() {
@@ -44,8 +44,8 @@ push
 echo "=== TRAIN (scaled Bragg3D) $(date -u +%FT%TZ) ==="
 PATS=$(ls data/doserad2026 | grep 1ABB | tr '\n' ' ')
 .venv/bin/python -u scripts/train_doserad_gpu.py --patients $PATS \
-  --max-beamlets "$PER_PATIENT" --epochs 80 --device cuda --batch-size 8 \
-  --d-model 256 --n-layers 8 --lr 3e-4 \
-  --gcs "$RUN" --out-dir /opt/bt/runs/scaling3 2>&1 | tee /opt/bt/train.log
+  --max-beamlets "$PER_PATIENT" --epochs 80 --device cuda --batch-size 16 \
+  --model dota3d --d-model 192 --n-layers 6 --lr 3e-4 \
+  --gcs "$RUN" --out-dir /opt/bt/runs/dota4 2>&1 | tee /opt/bt/train.log
 echo "=== TRAIN DONE $(date -u +%FT%TZ) ==="
 # finish() runs via EXIT trap: uploads logs, writes DONE, self-deletes
