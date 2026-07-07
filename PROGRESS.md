@@ -233,3 +233,15 @@ weight decay added ~+6 points. Run self-completed all 150 epochs and self-delete
 HONEST caveat: 62.8% is still far from the papers' ~99% (and at 3%/3mm, looser than their
 1%/3mm). So premature stopping explained SOME of the gap, not all — the rest is data scale
 (full 80k) + pipeline fidelity. Updated conclusion: the ceiling was not as hard as I claimed.
+
+### Overnight result #9 — ARCHITECTURE FIX CONFIRMED: spatial model beats the 63.76% ceiling
+Root cause of the ~63% plateau (docs/PLATEAU_DIAGNOSIS.md): dota3d.py encoder used
+AdaptiveAvgPool2d -> provably lateral-blind (token diff 6e-8). NOT compute (matched DoTA
+epochs), NOT the reward pipeline (gamma correct). Fix: DoTA3DSpatial (patch tokens, no
+avg-pool, verified position-discriminating). A/B on the SAME ~6000 beamlets + schedule:
+| metric | old dota3d (run11) | fixed dota3d_spatial (run12) |
+|---|---|---|
+| full-eval gamma @ epoch 40 | 51.56% | 58.70% (+7 pts) |
+| best gamma3d(3%/3mm) | 63.76% @ epoch 163 | **65.80% @ epoch 76** |
+Fixed model is more accurate AND ~2x more sample-efficient. Confirms the architecture was
+the bottleneck. Next levers (now unblocked): finer voxels + fluence channel + data scale.
