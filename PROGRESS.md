@@ -222,3 +222,14 @@ my earlier "57% ceiling" runs were gamma-eval-limited in how far they could trai
 needed: subsample per-epoch progress-gamma (full eval only at end) + DataLoader workers.
 Pivoting to the KEY test the user raised: DoTA warm-restart schedule + weight decay + LONG
 training + FAST eval, to see if the 57% plateau was a premature-stopping/schedule artifact.
+
+### Overnight result #8 — deep training + warm restarts BREAK the 57% ceiling (to ~63%)
+run10 (DoTA3D, DoTA warm-restart LR schedule, weight-decay 0.05, 150 epochs, fast eval,
+~6000 beamlets) reached **full held-out gamma3d(3%/3mm) = 62.8%** (best subsample 61.7%
+@ epoch 134) — vs the ~57% my earlier cosine/short runs plateaued at. **User was right:**
+the 57% "ceiling" was PARTLY a premature-stopping + monotonic-cosine + slow-eval artifact.
+Deep training (150 vs ~50 epochs, per DoTA needing 118 on a new dataset) + warm restarts +
+weight decay added ~+6 points. Run self-completed all 150 epochs and self-deleted (0 orphan).
+HONEST caveat: 62.8% is still far from the papers' ~99% (and at 3%/3mm, looser than their
+1%/3mm). So premature stopping explained SOME of the gap, not all — the rest is data scale
+(full 80k) + pipeline fidelity. Updated conclusion: the ceiling was not as hard as I claimed.
