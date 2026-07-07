@@ -242,6 +242,7 @@ avg-pool, verified position-discriminating). A/B on the SAME ~6000 beamlets + sc
 | metric | old dota3d (run11) | fixed dota3d_spatial (run12) |
 |---|---|---|
 | full-eval gamma @ epoch 40 | 51.56% | 58.70% (+7 pts) |
-| best gamma3d(3%/3mm) | 63.76% @ epoch 163 | **65.80% @ epoch 76** |
+| best gamma3d(3%/3mm) | 63.76% @ epoch 163 | **65.80% @ ep76** |
+| FINAL full-eval gamma (converged, 150 ep) | 62.70% | **68.82%** (+6.1 pts) |
 Fixed model is more accurate AND ~2x more sample-efficient. Confirms the architecture was
 the bottleneck. Next levers (now unblocked): finer voxels + fluence channel + data scale.
