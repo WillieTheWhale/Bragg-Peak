@@ -32,6 +32,7 @@ from braggtransporter.data.doserad import (
 )
 from braggtransporter.models.bragg3d import Bragg3D
 from braggtransporter.models.dota3d import DoTA3D
+from braggtransporter.models.dota3d_spatial import DoTA3DSpatial
 
 
 def parse_args() -> argparse.Namespace:
@@ -49,7 +50,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--save-best-by", choices=["gamma", "val_loss"], default="gamma")
     parser.add_argument("--eval-subsample", type=int, default=96, help="Fixed held-out beamlets for per-epoch progress gamma.")
     parser.add_argument("--full-eval-every", type=int, default=0, help="Run full held-out gamma every N epochs; 0 means only at end.")
-    parser.add_argument("--model", default="bragg3d", choices=["bragg3d", "dota3d"])
+    parser.add_argument("--model", default="bragg3d", choices=["bragg3d", "dota3d", "dota3d_spatial"])
     parser.add_argument("--device", default="cuda", choices=["auto", "cuda", "mps", "cpu"])
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--val-frac", type=float, default=0.15)
@@ -70,6 +71,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--n-layers", type=int, default=2)
     parser.add_argument("--n-heads", type=int, default=4)
     parser.add_argument("--d-ff", type=int, default=128)
+    parser.add_argument("--patch-size", type=int, default=4, help="Patch size for spatial DoTA models.")
     parser.add_argument("--gcs", default=None, help="Optional gs:// bucket/prefix for checkpoints and metrics.")
     parser.add_argument("--resume", nargs="?", const="latest", default=None, help="Resume from latest or a checkpoint path.")
     parser.add_argument("--download", action="store_true", help="Download selected patients before training.")
@@ -377,15 +379,18 @@ def load_existing_best_metrics(out_dir: Path, save_best_by: str) -> dict[str, fl
     return {str(k): float(v) for k, v in metrics.items() if isinstance(v, (int, float))}
 
 
-def build_model(args: argparse.Namespace) -> Bragg3D | DoTA3D:
-    model_cls = {"bragg3d": Bragg3D, "dota3d": DoTA3D}[str(args.model)]
-    return model_cls(
-        d_model=int(args.d_model),
-        n_layers=int(args.n_layers),
-        n_heads=int(args.n_heads),
-        d_ff=int(args.d_ff),
-        max_depth=max(128, int(args.depth_size)),
-    )
+def build_model(args: argparse.Namespace) -> Bragg3D | DoTA3D | DoTA3DSpatial:
+    model_cls = {"bragg3d": Bragg3D, "dota3d": DoTA3D, "dota3d_spatial": DoTA3DSpatial}[str(args.model)]
+    kwargs = {
+        "d_model": int(args.d_model),
+        "n_layers": int(args.n_layers),
+        "n_heads": int(args.n_heads),
+        "d_ff": int(args.d_ff),
+        "max_depth": max(128, int(args.depth_size)),
+    }
+    if str(args.model) == "dota3d_spatial":
+        kwargs["patch_size"] = int(args.patch_size)
+    return model_cls(**kwargs)
 
 
 def build_loaders(args: argparse.Namespace) -> tuple[DataLoader, DataLoader, str]:
