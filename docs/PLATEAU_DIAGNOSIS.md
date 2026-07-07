@@ -39,3 +39,41 @@ design: patch-embed or conv encoder that keeps the (H,W) feature map, transforme
 mixes along depth while preserving lateral features, U-Net-style conv decoder from
 full-resolution features. Add a beam-fluence input channel and finer lateral voxels.
 THEN scale data. This — not more epochs or grokking — is the lever to approach the papers.
+
+## Consensus audit (2026-07-07): me + Codex (blind, adversarial) independently agree
+
+Codex audited BLIND (not told my suspicions) and ADVERSARIALLY (told to default to "code is
+correct", write the strongest defense first, only flag a bug it could disprove). It still
+confirmed TWO bugs — genuine consensus, not sycophancy. Both verified empirically.
+
+### CONSENSUS BUG 1 (CRITICAL) — model is blind to tissue stopping power
+- Me: `hu_to_density_rsp` sets `rsp = density.copy()` and a no-op `np.where` -> density==RSP
+  (duplicate channels), crude linear conversion, no real stopping-power contrast.
+- Codex (the mechanism I MISSED): the 3 channels are linearly dependent ([a, 1+a, 1+a]), and
+  `slice_norm = GroupNorm(1, c_in)` then REMOVES the absolute level -> a homogeneous water
+  slab and a dense slab become IDENTICAL tensors before the transformer. VERIFIED: after
+  GroupNorm, water [0,1,1] == dense [1,2,2]. So the model cannot see tissue density, the
+  variable that sets Bragg-peak DEPTH. Concrete failure: same geometry/energy, water vs
+  dense -> model predicts same peak depth; real peak differs by >3mm -> gamma fails.
+- Fix: real piecewise HU->density and HU->RSP (density != RSP); do NOT normalize away the
+  absolute CT/RSP level (fixed dataset-constant standardization, not per-slice GroupNorm);
+  add a cumulative-WEPL physics-prior channel for peak depth.
+
+### CONSENSUS BUG 2 (HIGH) — physical depth scale hidden from the model
+- Me: depth spacing is a fixed ~7.8mm (coarser than the 3mm gamma DTA) and NOT range-adapted;
+  a 45MeV beamlet's peak occupies ~4 of 64 depth bins.
+- Codex: the variable physical depth spacing (7.1-8.0mm, patient/gantry-dependent) is computed
+  but NEVER fed to the model; it gets only index positions + 4 scalars. Two BEVs spanning
+  450 vs 500mm with identical normalized input must output the same depth INDEX -> ~20-25mm
+  peak error. Energy->physical-range is unlearnable without the mm scale.
+- Fix: feed physical depth spacing/coords to the model AND/OR resample every BEV to a fixed
+  physical-mm, range-adapted depth grid (fine ~1mm spacing so the peak is well resolved).
+
+### Independently judged CORRECT by BOTH (consensus on what's NOT broken)
+BEV geometry/axis ordering, ray direction, dose-file<->metadata matching, train/eval
+normalization consistency (the gamma "reward" is fine), the scalar/energy path exists.
+
+### Where we DIVERGED (honest)
+I flagged lateral 4mm voxels as a bug; Codex did NOT independently flag lateral resolution.
+Downgrade: lateral coarseness is a limitation, not a confirmed bug. The confirmed, consensus
+root causes are the MATERIAL-BLINDNESS (critical) and DEPTH-SCALE (high) bugs above.
