@@ -23,7 +23,7 @@ import torch
 from torch.utils.data import DataLoader, Dataset, random_split
 
 
-DOSERAD_INPUT_CHANNELS = 3
+DOSERAD_INPUT_CHANNELS = 4
 DOSERAD_HF_BASE_URL = "https://huggingface.co/datasets/LMUK-RADONC-PHYS-RES/DoseRAD2026/resolve/main"
 DOSERAD_MIN_DOWNLOAD_BYTES = 50 * 1024
 
@@ -59,19 +59,22 @@ def parse_plan(path: str | Path) -> dict[str, Any]:
 
 
 def hu_to_density_rsp(hu: NDArray[np.float32]) -> tuple[NDArray[np.float32], NDArray[np.float32]]:
-    """Approximate HU-to-density/RSP conversion for laptop-scale Phase 5.
+    """Approximate HU-to-density/RSP conversion for DoseRAD BEV inputs.
 
-    This is an explicit, simple CT prior for proof-of-concept training only:
-    air-like voxels map toward zero, water is one, and dense tissue rises
-    linearly up to a conservative cap. RSP is taken equal to mass density here
-    because the real material calibration table is not part of the public
-    DoseRAD beamlet files.
+    The curves are deterministic piecewise-linear CT calibration priors:
+    density is a Schneider-like electron-density/mass-density proxy, while RSP
+    is a separate proton stopping-power proxy. Values are raw physical inputs;
+    any model standardization must happen downstream.
     """
 
     hu32 = np.asarray(hu, dtype=np.float32)
-    density = np.where(hu32 < 0.0, 1.0 + hu32 / 1000.0, 1.0 + hu32 / 1000.0)
-    density = np.clip(density, 0.0, 2.5).astype(np.float32)
-    rsp = density.copy()
+    hu_knots = np.asarray([-1000.0, -950.0, -700.0, -300.0, -100.0, 0.0, 100.0, 300.0, 1000.0, 1600.0, 3000.0])
+    density_knots = np.asarray([0.0, 0.0, 0.30, 0.70, 0.93, 1.00, 1.06, 1.16, 1.55, 1.90, 2.20])
+    rsp_knots = np.asarray([0.0, 0.0, 0.25, 0.68, 0.94, 1.00, 1.03, 1.10, 1.43, 1.65, 1.90])
+    density = np.interp(hu32, hu_knots, density_knots).astype(np.float32)
+    rsp = np.interp(hu32, hu_knots, rsp_knots).astype(np.float32)
+    density = np.clip(density, 0.0, 2.2).astype(np.float32, copy=False)
+    rsp = np.clip(rsp, 0.0, 2.2).astype(np.float32, copy=False)
     return density, rsp
 
 
@@ -81,21 +84,26 @@ def extract_bev_pair(
     ray_source_mm: Iterable[float],
     ray_target_mm: Iterable[float],
     *,
-    depth_size: int = 64,
+    depth_size: int = 128,
+    depth_extent_mm: float = 300.0,
     lateral_size: int = 24,
     lateral_extent_mm: float = 96.0,
-) -> dict[str, NDArray[np.float32] | tuple[float, float, float]]:
+) -> dict[str, NDArray[np.float32] | tuple[float, float, float] | float]:
     """Extract a downsampled BEV CT/dose pair for one ray.
 
-    Output ``x`` has channels ``[HU/1000, density_g_cm3, RSP]`` and shape
-    ``(3, depth, lateral_y, lateral_x)``. ``dose`` has shape
+    Output ``x`` has raw channels ``[HU/1000, density_g_cm3, RSP, WEPL/300mm]``
+    and shape ``(4, depth, lateral_y, lateral_x)``. ``dose`` has shape
     ``(depth, lateral_y, lateral_x)``. The beam-depth axis follows
     ``ray_source -> ray_target`` and the first depth slice is placed at the CT
-    entrance along that ray.
+    entrance along that ray. The depth grid spans fixed ``depth_extent_mm`` so
+    ``depth_spacing_mm`` is consistent across beamlets and patients.
     """
 
     if depth_size <= 1 or lateral_size <= 1:
         raise ValueError("depth_size and lateral_size must both be > 1.")
+    fixed_depth_extent_mm = float(depth_extent_mm)
+    if not np.isfinite(fixed_depth_extent_mm) or fixed_depth_extent_mm <= 0.0:
+        raise ValueError("depth_extent_mm must be positive.")
 
     source = np.asarray(tuple(ray_source_mm), dtype=np.float64)
     target = np.asarray(tuple(ray_target_mm), dtype=np.float64)
@@ -110,15 +118,12 @@ def extract_bev_pair(
     if not np.isfinite(t0) or not np.isfinite(t1) or t1 <= t0:
         # Fall back to a target-centred crop so synthetic edge cases still test
         # the extraction path instead of failing before resampling.
-        nominal_depth = min(192.0, norm)
-        start = target - 0.5 * nominal_depth * depth_axis
-        depth_extent_mm = nominal_depth
+        start = target - 0.5 * fixed_depth_extent_mm * depth_axis
     else:
         start = source + max(t0, 0.0) * depth_axis
-        depth_extent_mm = max(1.0, t1 - max(t0, 0.0))
 
     lateral_u, lateral_v = _orthonormal_lateral_axes(depth_axis)
-    depth_spacing_mm = depth_extent_mm / float(depth_size - 1)
+    depth_spacing_mm = fixed_depth_extent_mm / float(depth_size - 1)
     lateral_spacing_mm = float(lateral_extent_mm) / float(lateral_size - 1)
 
     output_size = (int(lateral_size), int(lateral_size), int(depth_size))
@@ -150,12 +155,17 @@ def extract_bev_pair(
     hu = sitk.GetArrayFromImage(ct_bev).astype(np.float32, copy=False)
     dose = np.maximum(sitk.GetArrayFromImage(dose_bev).astype(np.float32, copy=False), 0.0)
     density, rsp = hu_to_density_rsp(hu)
-    x = np.stack([hu / 1000.0, density, rsp], axis=0).astype(np.float32, copy=False)
+    wepl_mm = np.empty_like(rsp, dtype=np.float32)
+    wepl_mm[0, :, :] = 0.0
+    wepl_mm[1:, :, :] = np.cumsum(rsp[:-1, :, :], axis=0, dtype=np.float32) * np.float32(depth_spacing_mm)
+    wepl_norm = (wepl_mm / np.float32(300.0)).astype(np.float32, copy=False)
+    x = np.stack([hu / 1000.0, density, rsp, wepl_norm], axis=0).astype(np.float32, copy=False)
 
     return {
         "x": x,
         "dose": dose.astype(np.float32, copy=False),
         "spacing_mm": (float(depth_spacing_mm), float(lateral_spacing_mm), float(lateral_spacing_mm)),
+        "depth_spacing_mm": float(depth_spacing_mm),
     }
 
 
@@ -169,7 +179,8 @@ class DoseRADBeamletDataset(Dataset[dict[str, torch.Tensor | dict[str, Any]]]):
         *,
         max_beamlets: int | None = None,
         max_beamlets_per_patient: int | None = None,
-        depth_size: int = 64,
+        depth_size: int = 128,
+        depth_extent_mm: float = 300.0,
         lateral_size: int = 24,
         lateral_extent_mm: float = 96.0,
         cache_dir: str | Path | None = None,
@@ -179,6 +190,7 @@ class DoseRADBeamletDataset(Dataset[dict[str, torch.Tensor | dict[str, Any]]]):
         self.root = Path(root)
         self.patients = _patients_list(patients)
         self.depth_size = int(depth_size)
+        self.depth_extent_mm = float(depth_extent_mm)
         self.lateral_size = int(lateral_size)
         self.lateral_extent_mm = float(lateral_extent_mm)
         self.rebuild_cache = bool(rebuild_cache)
@@ -200,12 +212,18 @@ class DoseRADBeamletDataset(Dataset[dict[str, torch.Tensor | dict[str, Any]]]):
             dose_scale = z["dose_scale"].astype(np.float32, copy=False) if "dose_scale" in z else np.asarray(1.0, dtype=np.float32)
             scalars = z["scalars"].astype(np.float32, copy=False)
             spacing_mm = z["spacing_mm"].astype(np.float32, copy=False)
+            depth_spacing_mm = (
+                z["depth_spacing_mm"].astype(np.float32, copy=False)
+                if "depth_spacing_mm" in z
+                else np.asarray(spacing_mm[0], dtype=np.float32)
+            )
         return {
             "x": torch.from_numpy(x),
             "dose": torch.from_numpy(dose),
             "dose_scale": torch.as_tensor(dose_scale, dtype=torch.float32),
             "scalars": torch.from_numpy(scalars),
             "spacing_mm": torch.from_numpy(spacing_mm),
+            "depth_spacing_mm": torch.as_tensor(depth_spacing_mm, dtype=torch.float32),
             "meta": {
                 "patient": rec.patient,
                 "beam_idx": rec.beam_idx,
@@ -271,7 +289,10 @@ class DoseRADBeamletDataset(Dataset[dict[str, torch.Tensor | dict[str, Any]]]):
                     )
 
     def _cache_path(self, patient: str, beam_idx: int, ray_idx: int, layer_idx: int) -> Path:
-        tag = f"d{self.depth_size}_l{self.lateral_size}_e{self.lateral_extent_mm:g}_norm1"
+        tag = (
+            f"d{self.depth_size}_de{self.depth_extent_mm:g}_l{self.lateral_size}"
+            f"_e{self.lateral_extent_mm:g}_c4_wepl_norm1"
+        )
         return self.cache_root / patient / tag / f"B{beam_idx}_R{ray_idx}_L{layer_idx}.npz"
 
     def _write_cache(self, rec: BeamletRecord, ct_image: sitk.Image) -> None:
@@ -282,6 +303,7 @@ class DoseRADBeamletDataset(Dataset[dict[str, torch.Tensor | dict[str, Any]]]):
             rec.ray_source_mm,
             rec.ray_target_mm,
             depth_size=self.depth_size,
+            depth_extent_mm=self.depth_extent_mm,
             lateral_size=self.lateral_size,
             lateral_extent_mm=self.lateral_extent_mm,
         )
@@ -299,6 +321,7 @@ class DoseRADBeamletDataset(Dataset[dict[str, torch.Tensor | dict[str, Any]]]):
             dose_scale=np.asarray(dose_scale, dtype=np.float32),
             scalars=scalars,
             spacing_mm=np.asarray(bev["spacing_mm"], dtype=np.float32),
+            depth_spacing_mm=np.asarray(bev["depth_spacing_mm"], dtype=np.float32),
         )
 
 
@@ -310,7 +333,8 @@ def make_doserad_loaders(
     val_frac: float = 0.25,
     batch_size: int = 2,
     seed: int = 0,
-    depth_size: int = 64,
+    depth_size: int = 128,
+    depth_extent_mm: float = 300.0,
     lateral_size: int = 24,
     lateral_extent_mm: float = 96.0,
     cache_dir: str | Path | None = None,
@@ -325,6 +349,7 @@ def make_doserad_loaders(
         patients,
         max_beamlets=max_beamlets,
         depth_size=depth_size,
+        depth_extent_mm=depth_extent_mm,
         lateral_size=lateral_size,
         lateral_extent_mm=lateral_extent_mm,
         cache_dir=cache_dir,

@@ -104,7 +104,15 @@ class DoTA3DSpatial(nn.Module):
         self.max_lateral_patches = int(max_lateral_patches)
 
         dec_width = max(16, self.d_model // 2)
-        self.slice_norm = nn.GroupNorm(1, self.c_in)
+        mean = torch.zeros(self.c_in, dtype=torch.float32)
+        std = torch.ones(self.c_in, dtype=torch.float32)
+        fixed_mean = torch.tensor([0.0, 1.0, 1.0, 0.5], dtype=torch.float32)
+        fixed_std = torch.tensor([0.6, 0.4, 0.4, 0.3], dtype=torch.float32)
+        n_fixed = min(self.c_in, fixed_mean.numel())
+        mean[:n_fixed] = fixed_mean[:n_fixed]
+        std[:n_fixed] = fixed_std[:n_fixed]
+        self.register_buffer("input_mean", mean.view(1, self.c_in, 1, 1), persistent=False)
+        self.register_buffer("input_std", std.view(1, self.c_in, 1, 1), persistent=False)
         self.patch_embed = nn.Sequential(
             nn.Conv2d(
                 self.c_in,
@@ -181,7 +189,10 @@ class DoTA3DSpatial(nn.Module):
             )
 
         slices = x.permute(0, 2, 1, 3, 4).reshape(batch * depth, self.c_in, height, width)
-        embedded = self.patch_embed(self.slice_norm(slices))
+        input_mean = self.input_mean.to(device=slices.device, dtype=slices.dtype)
+        input_std = self.input_std.to(device=slices.device, dtype=slices.dtype)
+        standardized_slices = (slices - input_mean) / input_std
+        embedded = self.patch_embed(standardized_slices)
         _, _, patch_h, patch_w = embedded.shape
 
         tokens = embedded.reshape(batch, depth, self.d_model, patch_h, patch_w)
@@ -199,7 +210,7 @@ class DoTA3DSpatial(nn.Module):
         logits = self.slice_decoder(features).squeeze(1)
         if logits.shape[-2:] != (height, width):
             logits = F.interpolate(logits[:, None], size=(height, width), mode="bilinear", align_corners=False).squeeze(1)
-        skip = self.local_skip(slices).squeeze(1)
+        skip = self.local_skip(standardized_slices).squeeze(1)
         dose = F.softplus(logits + skip)
         return {"dose": dose.reshape(batch, depth, height, width)}
 
