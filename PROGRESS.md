@@ -251,8 +251,7 @@ the bottleneck. Next levers (now unblocked): finer voxels + fluence channel + da
 Fixed the two consensus-audit bugs (docs/PLATEAU_DIAGNOSIS.md): (1) model blind to tissue
 density (real HU->density/RSP + WEPL channel + fixed standardization preserving absolute
 level), (2) hidden/coarse depth scale (fixed 300mm/128-bin = 2.36mm consistent grid).
-run15 (fixed pipeline, same 6000 beamlets as run12) reached best subsample gamma
-**78.44% @ epoch 28** vs run12's converged 68.82% -- and got there ~10x faster (beat 68.82%
-by epoch 9 vs epoch 138). Preempted at ep28 before the epoch-40 full-eval; relaunching to get
-the converged full-eval. Progress ladder: 63% (lateral-blind) -> 68.8% (spatial arch) ->
-78%+ (physics). Both bug fixes independently confirmed by adversarial Codex + empirics.
+run15 (fixed pipeline, same 6000 beamlets as run12) COMPLETED 150 epochs: full-eval gamma
+trajectory 79.7 -> 85.0 -> 83.5 -> **87.25% converged** (best subsample 87.30%@ep140) vs
+run12's 68.82%. (Note: a monitor false-alarmed 'preempted@ep28'; run15 actually ran to completion.) Progress ladder: 63% (lateral-blind) -> 68.8% (spatial arch) ->
+87.25% (physics). Both bug fixes independently confirmed by adversarial Codex + empirics.
