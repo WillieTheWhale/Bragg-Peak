@@ -77,3 +77,29 @@ normalization consistency (the gamma "reward" is fine), the scalar/energy path e
 I flagged lateral 4mm voxels as a bug; Codex did NOT independently flag lateral resolution.
 Downgrade: lateral coarseness is a limitation, not a confirmed bug. The confirmed, consensus
 root causes are the MATERIAL-BLINDNESS (critical) and DEPTH-SCALE (high) bugs above.
+
+## Double-blind audit #2 (2026-07-08): 2 more consensus findings
+
+Both found INDEPENDENTLY by me and blind-adversarial Codex (each with its own empirical test).
+
+### CONSENSUS FINDING 3 (CAPPING, HIGH) — depth window CLIPS high-energy Bragg peaks
+Our own depth fix (fixed 300mm extent from the CT-box entry) is TOO SHORT: for high-energy
+beamlets (up to 200.8 MeV, CSDA range ~262mm; box-entry offset pushes peaks past 300mm) the
+Bragg peak falls at/after the last depth bin. Me: ~40% of a 30-beamlet sample clipped (peak
+at bin 127/128, dose still rising). Codex (own test): 194-200 MeV beamlets show peak_idx=63/64,
+last/peak=1.0 -> peak beyond the window. This CAPS gamma on ~40% of beamlets.
+FIX (designed): raise depth_extent_mm 300 -> 400 (covers 200MeV range + margin); keep
+depth_size (spacing ~3.1mm, consistent). Verify NO beamlet clips at 400mm across all energies.
+
+### CONSENSUS FINDING 4 (INFLATES, HIGH-for-honesty) — same-patient train/val leakage
+make_doserad_loaders / trainer use random_split over POOLED beamlets, so train and val
+beamlets come from the SAME patients -> the model exploits patient-specific anatomy ->
+our 87% OVERSTATES true patient-generalization (the paper uses patient holdout). Both
+confirmed (Codex: "implemented as a beamlet split, same-patient train/val is allowed").
+FIX (designed): split by PATIENT (hold out whole patients for val). Expect the honest
+number to DROP below 87% -- that is the real generalization gap to close.
+
+### Judged CORRECT by both (no fix)
+WEPL is input-only + causal (no target leak); gamma_index_3d is a standard global gamma;
+model does not see the target. Net: finding 3 is a real capping bug to fix; finding 4 means
+our current number is optimistic and must be re-measured honestly.
