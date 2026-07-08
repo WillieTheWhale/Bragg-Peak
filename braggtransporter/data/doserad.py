@@ -20,7 +20,7 @@ import numpy as np
 from numpy.typing import NDArray
 import SimpleITK as sitk
 import torch
-from torch.utils.data import DataLoader, Dataset, random_split
+from torch.utils.data import DataLoader, Dataset, Subset, random_split
 
 
 DOSERAD_INPUT_CHANNELS = 4
@@ -85,7 +85,7 @@ def extract_bev_pair(
     ray_target_mm: Iterable[float],
     *,
     depth_size: int = 128,
-    depth_extent_mm: float = 300.0,
+    depth_extent_mm: float = 400.0,
     lateral_size: int = 24,
     lateral_extent_mm: float = 96.0,
 ) -> dict[str, NDArray[np.float32] | tuple[float, float, float] | float]:
@@ -180,7 +180,7 @@ class DoseRADBeamletDataset(Dataset[dict[str, torch.Tensor | dict[str, Any]]]):
         max_beamlets: int | None = None,
         max_beamlets_per_patient: int | None = None,
         depth_size: int = 128,
-        depth_extent_mm: float = 300.0,
+        depth_extent_mm: float = 400.0,
         lateral_size: int = 24,
         lateral_extent_mm: float = 96.0,
         cache_dir: str | Path | None = None,
@@ -334,15 +334,16 @@ def make_doserad_loaders(
     batch_size: int = 2,
     seed: int = 0,
     depth_size: int = 128,
-    depth_extent_mm: float = 300.0,
+    depth_extent_mm: float = 400.0,
     lateral_size: int = 24,
     lateral_extent_mm: float = 96.0,
     cache_dir: str | Path | None = None,
     rebuild_cache: bool = False,
     num_workers: int = 0,
     max_beamlets_per_patient: int | None = None,
+    split_by: str = "patient",
 ) -> tuple[DataLoader, DataLoader]:
-    """Build cached DoseRAD beamlet dataset and split train/val over beamlets."""
+    """Build cached DoseRAD beamlet dataset and split train/val deterministically."""
 
     dataset = DoseRADBeamletDataset(
         root,
@@ -356,15 +357,108 @@ def make_doserad_loaders(
         rebuild_cache=rebuild_cache,
         max_beamlets_per_patient=max_beamlets_per_patient,
     )
+    train_ds, val_ds, actual_split, val_patient_ids, train_patient_ids, fallback = _split_doserad_dataset(
+        dataset,
+        val_frac=float(val_frac),
+        seed=int(seed),
+        split_by=str(split_by),
+    )
+    if fallback:
+        print(
+            "warning: split_by=patient requested but only one patient is available; "
+            "falling back to beamlet split, validation metrics are optimistic.",
+            flush=True,
+        )
+    print(f"DoseRAD split_by={actual_split} val_patients={json.dumps(val_patient_ids)}", flush=True)
+    gen = torch.Generator().manual_seed(int(seed))
+    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, generator=gen, num_workers=num_workers)
+    val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False, num_workers=num_workers)
+    _attach_split_metadata(
+        train_loader,
+        val_loader,
+        split_by=actual_split,
+        val_patient_ids=val_patient_ids,
+        train_patient_ids=train_patient_ids,
+    )
+    return train_loader, val_loader
+
+
+def _split_doserad_dataset(
+    dataset: DoseRADBeamletDataset,
+    *,
+    val_frac: float,
+    seed: int,
+    split_by: str,
+) -> tuple[Subset, Subset, str, list[str], list[str], bool]:
+    mode = str(split_by).lower()
+    if mode not in {"patient", "beamlet"}:
+        raise ValueError("split_by must be 'patient' or 'beamlet'.")
+
+    patient_ids = _unique_record_patients(dataset)
+    if mode == "patient" and len(patient_ids) > 1:
+        shuffled = list(patient_ids)
+        rng = np.random.default_rng(int(seed))
+        rng.shuffle(shuffled)
+        n_val = max(1, int(math.ceil(float(val_frac) * len(shuffled))))
+        if n_val >= len(shuffled):
+            n_val = len(shuffled) - 1
+        val_patient_ids = list(shuffled[:n_val])
+        val_patient_set = set(val_patient_ids)
+        train_indices = [i for i, rec in enumerate(dataset.records) if rec.patient not in val_patient_set]
+        val_indices = [i for i, rec in enumerate(dataset.records) if rec.patient in val_patient_set]
+        train_patient_ids = [p for p in patient_ids if p not in val_patient_set]
+        return (
+            Subset(dataset, train_indices),
+            Subset(dataset, val_indices),
+            "patient",
+            val_patient_ids,
+            train_patient_ids,
+            False,
+        )
+
+    train_ds, val_ds = _beamlet_split(dataset, val_frac=val_frac, seed=seed)
+    train_indices = [int(i) for i in train_ds.indices]
+    val_indices = [int(i) for i in val_ds.indices]
+    return (
+        train_ds,
+        val_ds,
+        "beamlet",
+        _record_patients_for_indices(dataset, val_indices),
+        _record_patients_for_indices(dataset, train_indices),
+        mode == "patient" and len(patient_ids) <= 1,
+    )
+
+
+def _beamlet_split(dataset: DoseRADBeamletDataset, *, val_frac: float, seed: int) -> tuple[Subset, Subset]:
     val_len = max(1, int(round(len(dataset) * float(val_frac)))) if len(dataset) > 1 else 1
     train_len = max(1, len(dataset) - val_len)
     if train_len + val_len > len(dataset):
         train_len = len(dataset) - val_len
     gen = torch.Generator().manual_seed(int(seed))
     train_ds, val_ds = random_split(dataset, [train_len, val_len], generator=gen)
-    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, generator=gen, num_workers=num_workers)
-    val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False, num_workers=num_workers)
-    return train_loader, val_loader
+    return train_ds, val_ds
+
+
+def _unique_record_patients(dataset: DoseRADBeamletDataset) -> list[str]:
+    return list(dict.fromkeys(rec.patient for rec in dataset.records))
+
+
+def _record_patients_for_indices(dataset: DoseRADBeamletDataset, indices: Iterable[int]) -> list[str]:
+    return list(dict.fromkeys(dataset.records[int(i)].patient for i in indices))
+
+
+def _attach_split_metadata(
+    train_loader: DataLoader,
+    val_loader: DataLoader,
+    *,
+    split_by: str,
+    val_patient_ids: list[str],
+    train_patient_ids: list[str],
+) -> None:
+    for loader in (train_loader, val_loader):
+        loader.split_by = str(split_by)
+        loader.val_patient_ids = list(val_patient_ids)
+        loader.train_patient_ids = list(train_patient_ids)
 
 
 def normalize_beamlet_dose(dose: NDArray[np.float32]) -> tuple[NDArray[np.float32], float]:

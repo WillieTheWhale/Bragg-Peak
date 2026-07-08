@@ -55,8 +55,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--val-frac", type=float, default=0.15)
     parser.add_argument("--depth-size", type=int, default=64)
+    parser.add_argument("--depth-extent-mm", type=float, default=400.0)
     parser.add_argument("--lateral-size", type=int, default=24)
     parser.add_argument("--lateral-extent-mm", type=float, default=96.0)
+    parser.add_argument("--split-by", choices=["patient", "beamlet"], default="patient")
     parser.add_argument(
         "--num-workers",
         type=int,
@@ -404,10 +406,12 @@ def build_loaders(args: argparse.Namespace) -> tuple[DataLoader, DataLoader, str
             batch_size=int(args.batch_size),
             seed=int(args.seed),
             depth_size=int(args.depth_size),
+            depth_extent_mm=float(args.depth_extent_mm),
             lateral_size=int(args.lateral_size),
             lateral_extent_mm=float(args.lateral_extent_mm),
             rebuild_cache=bool(args.rebuild_cache),
             num_workers=0,
+            split_by=str(args.split_by),
         )
         train_loader = clone_loader(
             loaders[0].dataset,
@@ -428,10 +432,7 @@ def build_loaders(args: argparse.Namespace) -> tuple[DataLoader, DataLoader, str
             lateral=int(args.lateral_size),
             seed=int(args.seed),
         )
-        gen = torch.Generator().manual_seed(int(args.seed))
-        val_len = max(1, int(round(len(ds) * float(args.val_frac))))
-        train_len = len(ds) - val_len
-        train_ds, val_ds = torch.utils.data.random_split(ds, [train_len, val_len], generator=gen)
+        train_ds, val_ds = split_generic_dataset(ds, val_frac=float(args.val_frac), seed=int(args.seed), split_by=str(args.split_by))
         train_loader = clone_loader(
             train_ds,
             args,
@@ -441,6 +442,60 @@ def build_loaders(args: argparse.Namespace) -> tuple[DataLoader, DataLoader, str
         )
         val_loader = clone_loader(val_ds, args, shuffle=False, workers=workers)
         return train_loader, val_loader, "synthetic"
+
+
+def split_generic_dataset(
+    dataset: Dataset,
+    *,
+    val_frac: float,
+    seed: int,
+    split_by: str,
+) -> tuple[Subset, Subset]:
+    mode = str(split_by).lower()
+    if mode not in {"patient", "beamlet"}:
+        raise ValueError("split_by must be 'patient' or 'beamlet'.")
+
+    patient_by_index = [_dataset_patient_id(dataset, i) for i in range(len(dataset))]
+    patient_ids = list(dict.fromkeys(patient_by_index))
+    if mode == "patient" and len(patient_ids) > 1:
+        shuffled = list(patient_ids)
+        rng = np.random.default_rng(int(seed))
+        rng.shuffle(shuffled)
+        n_val = max(1, int(np.ceil(float(val_frac) * len(shuffled))))
+        if n_val >= len(shuffled):
+            n_val = len(shuffled) - 1
+        val_patient_ids = list(shuffled[:n_val])
+        val_patient_set = set(val_patient_ids)
+        train_indices = [i for i, patient in enumerate(patient_by_index) if patient not in val_patient_set]
+        val_indices = [i for i, patient in enumerate(patient_by_index) if patient in val_patient_set]
+        print(f"DoseRAD split_by=patient val_patients={json.dumps(val_patient_ids)}", flush=True)
+        return Subset(dataset, train_indices), Subset(dataset, val_indices)
+
+    if mode == "patient" and len(patient_ids) <= 1:
+        print(
+            "warning: split_by=patient requested but only one patient is available; "
+            "falling back to beamlet split, validation metrics are optimistic.",
+            flush=True,
+        )
+
+    val_len = max(1, int(round(len(dataset) * float(val_frac)))) if len(dataset) > 1 else 1
+    train_len = max(1, len(dataset) - val_len)
+    if train_len + val_len > len(dataset):
+        train_len = len(dataset) - val_len
+    gen = torch.Generator().manual_seed(int(seed))
+    train_ds, val_ds = torch.utils.data.random_split(dataset, [train_len, val_len], generator=gen)
+    val_patient_ids = list(dict.fromkeys(patient_by_index[int(i)] for i in val_ds.indices))
+    print(f"DoseRAD split_by=beamlet val_patients={json.dumps(val_patient_ids)}", flush=True)
+    return train_ds, val_ds
+
+
+def _dataset_patient_id(dataset: Dataset, idx: int) -> str:
+    item = dataset[int(idx)]
+    if isinstance(item, dict):
+        meta = item.get("meta")
+        if isinstance(meta, dict) and "patient" in meta:
+            return str(meta["patient"])
+    return "UNKNOWN"
 
 
 def loader_worker_count(args: argparse.Namespace) -> int:
@@ -916,9 +971,12 @@ class SyntheticDoseRADDataset(Dataset[dict[str, torch.Tensor | dict[str, Any]]])
             hu = -0.1 + 0.15 * z.expand_as(dose) + 0.01 * torch.randn(dose.shape, generator=gen)
             density = (1.0 + hu).clamp(0.0, 2.5)
             rsp = density.clone()
+            wepl = torch.empty_like(rsp)
+            wepl[0, :, :] = 0.0
+            wepl[1:, :, :] = torch.cumsum(rsp[:-1, :, :], dim=0) * (2.0 / 300.0)
             self.items.append(
                 {
-                    "x": torch.stack([hu, density, rsp], dim=0).float(),
+                    "x": torch.stack([hu, density, rsp, wepl], dim=0).float(),
                     "dose": dose.float(),
                     "dose_scale": torch.tensor((i + 1) * 1e-3, dtype=torch.float32),
                     "scalars": torch.tensor([100.0 + 2.0 * i, float(i % 8), 0.0, 1.0], dtype=torch.float32),
