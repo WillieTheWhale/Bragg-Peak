@@ -46,7 +46,7 @@ PATS=$(ls data/doserad2026 | grep 1ABB | tr '\n' ' ')
 .venv/bin/python -u scripts/train_doserad_gpu.py --patients $PATS \
   --max-beamlets "$PER_PATIENT" --epochs 150 --device cuda --batch-size 10 \
   --model dota3d_spatial --d-model 192 --n-layers 6 --lr 3e-4 \
-  --lr-schedule dota --restart-epochs 28 --weight-decay 0.1 --eval-subsample 96 --full-eval-every 40 \
+  --split-by patient --depth-extent-mm 400 --lr-schedule dota --restart-epochs 28 --weight-decay 0.1 --eval-subsample 96 --full-eval-every 40 \
   --gcs "$RUN" --out-dir /opt/bt/runs/dota15 2>&1 | tee /opt/bt/train.log
 echo "=== TRAIN DONE $(date -u +%FT%TZ) ==="
 # finish() runs via EXIT trap: uploads logs, writes DONE, self-deletes
