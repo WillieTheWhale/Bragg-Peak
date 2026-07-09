@@ -58,7 +58,7 @@ def test_fixed_depth_spacing_is_constant_across_rays() -> None:
         **kwargs,
     )
 
-    expected_spacing = 300.0 / 15.0
+    expected_spacing = 400.0 / 15.0
     assert bev_a["depth_spacing_mm"] == pytest.approx(expected_spacing)
     assert bev_b["depth_spacing_mm"] == pytest.approx(expected_spacing)
     assert np.asarray(bev_a["spacing_mm"])[0] == pytest.approx(expected_spacing)
@@ -75,3 +75,60 @@ def _constant_sitk_pair(*, hu: float) -> tuple[sitk.Image, sitk.Image]:
         image.SetSpacing((2.0, 2.0, 2.0))
         image.SetOrigin((0.0, 0.0, 0.0))
     return ct, dose
+
+
+def test_gamma_dta_grants_credit_on_2mm_grid_but_not_on_coarse_grid() -> None:
+    """A 2mm depth shift is inside the 3mm DTA and must pass on a 2mm grid.
+
+    On a 6.35mm grid (run17's resolved depth spacing) every neighbouring voxel
+    is farther than the DTA, so the same physical shift fails: the DTA term is
+    inert and gamma degenerates to a same-voxel dose test. Guards against
+    silently launching runs whose grid makes the metric non-comparable.
+    """
+
+    from braggtransporter.data.doserad import gamma_index_3d
+
+    def cube(spacing_mm: float, shift_mm: float, n: int) -> np.ndarray:
+        z = np.arange(n, dtype=np.float64) * spacing_mm
+        profile = np.exp(-0.5 * ((z - shift_mm - 60.0) / 8.0) ** 2)
+        return np.tile(profile[:, None, None], (1, 3, 3))
+
+    fine = 2.0
+    g_fine = gamma_index_3d(
+        cube(fine, 2.0, 64), cube(fine, 0.0, 64), (fine, fine, fine), dose_pct=3.0, dta_mm=3.0
+    )
+    assert g_fine == pytest.approx(100.0)
+
+    coarse = 400.0 / 63.0
+    g_coarse = gamma_index_3d(
+        cube(coarse, 2.0, 64), cube(coarse, 0.0, 64), (coarse, coarse, coarse), dose_pct=3.0, dta_mm=3.0
+    )
+    assert g_coarse < 100.0
+
+
+def test_run17_mislaunch_configuration_is_now_fatal(monkeypatch) -> None:
+    """Omitting --depth-size with a 400mm extent (run17's exact mislaunch)
+    resolves to 6.35mm depth bins and must abort unless explicitly allowed."""
+
+    import sys as _sys
+
+    _sys.path.insert(0, "scripts")
+    import importlib
+
+    tdg = importlib.import_module("train_doserad_gpu")
+
+    monkeypatch.setattr(
+        _sys, "argv", ["train_doserad_gpu.py", "--depth-extent-mm", "400", "--allow-coarse-axes", "lateral"]
+    )
+    args = tdg.parse_args()
+    assert args.depth_size == 64
+    with pytest.raises(SystemExit, match="depth spacing 6.35mm"):
+        tdg.report_grid_resolution(args)
+
+    monkeypatch.setattr(
+        _sys,
+        "argv",
+        ["train_doserad_gpu.py", "--depth-extent-mm", "400", "--depth-size", "201", "--allow-coarse-axes", "lateral"],
+    )
+    good = tdg.parse_args()
+    tdg.report_grid_resolution(good)

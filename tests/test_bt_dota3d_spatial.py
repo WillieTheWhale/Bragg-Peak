@@ -124,7 +124,10 @@ def _synthetic_batch(
         hu = (-0.05 + 0.15 * z.squeeze(0).expand_as(dose) + 0.25 * dose).clamp(-1.0, 2.5)
         density = (1.0 + hu).clamp(0.0, 2.5)
         rsp = density.clone()
-        inputs.append(torch.stack([hu, density, rsp], dim=0))
+        wepl = torch.empty_like(rsp)
+        wepl[0, :, :] = 0.0
+        wepl[1:, :, :] = torch.cumsum(rsp[:-1, :, :], dim=0) * (2.0 / 300.0)
+        inputs.append(torch.stack([hu, density, rsp, wepl], dim=0))
         doses.append(dose)
         scalars.append(torch.tensor([120.0 + 20.0 * i, float(i), 0.0, 1.0], dtype=torch.float32))
 

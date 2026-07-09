@@ -79,6 +79,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--download", action="store_true", help="Download selected patients before training.")
     parser.add_argument("--rebuild-cache", action="store_true")
     parser.add_argument("--fast", action="store_true", help="Small CPU-friendly smoke run; uses synthetic data if real data is absent.")
+    parser.add_argument(
+        "--allow-coarse-axes",
+        nargs="+",
+        choices=["depth", "lateral"],
+        default=[],
+        help="Axes permitted to have grid spacing above the 3mm gamma DTA (hard error otherwise, outside --fast).",
+    )
     return parser.parse_args()
 
 
@@ -105,6 +112,7 @@ def train(args: argparse.Namespace) -> dict[str, float]:
         summary = download_patients(args.patients, args.root, args.max_beamlets)
         print(f"download_summary={json.dumps(summary, sort_keys=True)}", flush=True)
 
+    report_grid_resolution(args)
     train_loader, val_loader, source = build_loaders(args)
     val_sub_loader = make_eval_subsample_loader(val_loader, args)
     model = build_model(args).to(device)
@@ -379,6 +387,37 @@ def load_existing_best_metrics(out_dir: Path, save_best_by: str) -> dict[str, fl
     if key not in metrics:
         return None
     return {str(k): float(v) for k, v in metrics.items() if isinstance(v, (int, float))}
+
+
+def report_grid_resolution(args: argparse.Namespace, *, dta_mm: float = 3.0) -> None:
+    """Print the resolved BEV grid spacing and warn when it silently degrades gamma.
+
+    Voxel-center gamma search grants distance-to-agreement credit only when a
+    neighbouring voxel lies within ``dta_mm``; spacing above that makes the DTA
+    term inert and turns "gamma at X%/3mm" into a same-voxel dose test.
+    """
+
+    depth_sp = float(args.depth_extent_mm) / float(max(1, int(args.depth_size) - 1))
+    lat_sp = float(args.lateral_extent_mm) / float(max(1, int(args.lateral_size) - 1))
+    print(
+        f"resolved grid: depth {int(args.depth_size)} bins x {depth_sp:.3f}mm, "
+        f"lateral {int(args.lateral_size)} bins x {lat_sp:.3f}mm",
+        flush=True,
+    )
+    for axis, spacing in (("depth", depth_sp), ("lateral", lat_sp)):
+        if spacing > float(dta_mm):
+            message = (
+                f"{axis} spacing {spacing:.2f}mm exceeds the {dta_mm:g}mm gamma DTA; "
+                f"the DTA term is inert along {axis} and gamma degenerates toward a "
+                "same-voxel dose-difference test (harsher than the standard metric)."
+            )
+            if bool(getattr(args, "fast", False)) or axis in list(getattr(args, "allow_coarse_axes", [])):
+                print(f"warning: {message}", flush=True)
+            else:
+                raise SystemExit(
+                    f"error: {message} Pass --allow-coarse-axes {axis} to run anyway, or raise "
+                    f"--depth-size/--lateral-size (run17 regression guard)."
+                )
 
 
 def build_model(args: argparse.Namespace) -> Bragg3D | DoTA3D | DoTA3DSpatial:

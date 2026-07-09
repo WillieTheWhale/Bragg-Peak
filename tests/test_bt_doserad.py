@@ -63,6 +63,7 @@ def test_direct_bev_extraction_axis0_depth(tmp_path: Path) -> None:
         ray_source_mm=(15.0, -20.0, 15.0),
         ray_target_mm=(15.0, 30.0, 15.0),
         depth_size=10,
+        depth_extent_mm=50.0,
         lateral_size=6,
         lateral_extent_mm=20.0,
     )
