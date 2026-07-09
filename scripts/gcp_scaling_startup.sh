@@ -6,7 +6,7 @@ set -x
 LOG=/var/log/bt_scaling.log
 exec > >(tee -a "$LOG") 2>&1
 BUCKET="gs://braggtransporter-braggtransporter"
-RUN="$BUCKET/runs/dota15"
+RUN="$BUCKET/runs/dota17"
 # verified real proton patient IDs (paginated complete listing -> ~1080 beamlets each)
 PATIENTS="1ABB006,1ABB011,1ABB020,1ABB021,1ABB030,1ABB031,1ABB035,1ABB036,1ABB039,1ABB041,1ABB042,1ABB045"
 PER_PATIENT=500
@@ -47,6 +47,6 @@ PATS=$(ls data/doserad2026 | grep 1ABB | tr '\n' ' ')
   --max-beamlets "$PER_PATIENT" --epochs 150 --device cuda --batch-size 10 \
   --model dota3d_spatial --d-model 192 --n-layers 6 --lr 3e-4 \
   --split-by patient --depth-extent-mm 400 --lr-schedule dota --restart-epochs 28 --weight-decay 0.1 --eval-subsample 96 --full-eval-every 40 \
-  --gcs "$RUN" --out-dir /opt/bt/runs/dota15 2>&1 | tee /opt/bt/train.log
+  --gcs "$RUN" --out-dir /opt/bt/runs/dota17 2>&1 | tee /opt/bt/train.log
 echo "=== TRAIN DONE $(date -u +%FT%TZ) ==="
 # finish() runs via EXIT trap: uploads logs, writes DONE, self-deletes
