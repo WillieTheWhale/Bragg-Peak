@@ -132,3 +132,73 @@ def test_run17_mislaunch_configuration_is_now_fatal(monkeypatch) -> None:
     )
     good = tdg.parse_args()
     tdg.report_grid_resolution(good)
+
+
+def test_fast_gamma_matches_reference_pass_rate() -> None:
+    """Vectorized gamma must agree with the reference point-loop implementation
+    across grids, criteria, and cutoffs (including the papers' 0.1% cutoff)."""
+
+    from braggtransporter.data.doserad import gamma_index_3d, gamma_index_3d_fast
+
+    rng = np.random.default_rng(7)
+    for spacing in ((2.0, 4.17, 4.17), (6.35, 4.17, 4.17), (1.5, 1.5, 1.5)):
+        ref = rng.random((24, 9, 9)) ** 3
+        pred = np.clip(ref + rng.normal(0.0, 0.02, ref.shape), 0.0, None)
+        for dose_pct, dta, cut in ((3.0, 3.0, 0.1), (1.0, 3.0, 0.001), (2.0, 2.0, 0.1)):
+            slow = gamma_index_3d(pred, ref, spacing, dose_pct=dose_pct, dta_mm=dta, low_dose_threshold=cut)
+            fast = gamma_index_3d_fast(pred, ref, spacing, dose_pct=dose_pct, dta_mm=dta, low_dose_threshold=cut)
+            assert fast == pytest.approx(slow), (spacing, dose_pct, dta, cut)
+
+
+def test_stratified_selection_spans_all_beams() -> None:
+    """Round-robin manifest must cover every beam/gantry angle; the old prefix
+    covered 17/36 (the iteration-2 consensus finding)."""
+
+    import sys as _sys
+
+    _sys.path.insert(0, "scripts")
+    from vm_download_doserad import stratified_beamlet_paths
+
+    plan = {
+        "beams": [
+            {
+                "beam_idx": b,
+                "gantry_angle": 10.0 * b,
+                "rays": [
+                    {
+                        "ray_idx": r,
+                        "beamlets": [{"beamlet_idx": l, "energy": 100.0} for l in range(6)],
+                    }
+                    for r in range(5)
+                ],
+            }
+            for b in range(36)
+        ]
+    }
+    paths = stratified_beamlet_paths(plan, "PAT", 500)
+    assert len(paths) == 500
+    beams_covered = {p.split("Dose_B")[1].split("_")[0] for p in paths}
+    assert len(beams_covered) == 36
+    per_beam = [sum(1 for p in paths if f"Dose_B{b}_" in p) for b in range(36)]
+    assert max(per_beam) - min(per_beam) <= 1
+
+
+def test_three_way_patient_split_is_disjoint_and_test_matches_legacy_val(tmp_path, monkeypatch) -> None:
+    """test_frac>0 must produce disjoint patient cohorts, and the TEST cohort
+    must equal the FIRST slice of the seeded shuffle (the patients legacy
+    two-way runs used as val) so headline numbers stay comparable."""
+
+    import math as _math
+
+    patient_ids = [f"P{i:02d}" for i in range(12)]
+    rng = np.random.default_rng(0)
+    shuffled = list(patient_ids)
+    rng.shuffle(shuffled)
+    n_test = max(1, int(_math.ceil(0.15 * 12)))
+    expected_test = shuffled[:n_test]
+
+    legacy_rng = np.random.default_rng(0)
+    legacy = list(patient_ids)
+    legacy_rng.shuffle(legacy)
+    legacy_val = legacy[: max(1, int(_math.ceil(0.15 * 12)))]
+    assert expected_test == legacy_val

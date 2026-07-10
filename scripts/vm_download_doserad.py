@@ -53,6 +53,36 @@ def _get(url: str) -> bytes:
     raise last
 
 
+def stratified_beamlet_paths(plan: dict, pat: str, per_patient: int) -> list[str]:
+    """Round-robin across beams (all gantry angles), ray/layer order within a beam.
+
+    A plain listing-prefix covers only the lexicographically-first beams (17/36
+    gantry angles for the DoseRAD proton plans), so train AND val would omit
+    half the angular/anatomical distribution. Round-robin keeps the selection
+    deterministic while spanning every beam evenly.
+    """
+
+    groups: list[list[str]] = []
+    for beam in plan.get("beams", []):
+        b = int(beam.get("beam_idx", 0))
+        items: list[str] = []
+        for ray in beam.get("rays", []):
+            r = int(ray.get("ray_idx", 0))
+            for bl in ray.get("beamlets", []):
+                l = int(bl.get("beamlet_idx", bl.get("layer_idx", 0)))
+                items.append(f"proton/training/{pat}/dose/Dose_B{b}_R{r}_L{l}.mha")
+        if items:
+            groups.append(items)
+    out: list[str] = []
+    rank = 0
+    while len(out) < per_patient and any(rank < len(g) for g in groups):
+        for g in groups:
+            if rank < len(g) and len(out) < per_patient:
+                out.append(g[rank])
+        rank += 1
+    return out
+
+
 def download(patients: list[str], per_patient: int, root: str = "data/doserad2026") -> None:
     total = 0
     for pat in patients:
@@ -67,7 +97,21 @@ def download(patients: list[str], per_patient: int, root: str = "data/doserad202
             listed = _list_dose_files(pat)
         except Exception as e:  # noqa: BLE001
             print(f"{pat}: dose listing failed ({e})", flush=True); continue
-        paths = [p for p, _ in listed][:per_patient]
+        available = {p for p, _ in listed}
+        try:
+            plan = json.loads((d / "plan.json").read_bytes())
+            stratified = [p for p in stratified_beamlet_paths(plan, pat, per_patient) if p in available]
+        except Exception as e:  # noqa: BLE001
+            print(f"{pat}: stratification failed ({e}); falling back to listing prefix", flush=True)
+            stratified = []
+        if stratified:
+            paths = stratified
+            if len(paths) < per_patient:  # top up from the listing if upstream files are missing
+                seen = set(paths)
+                paths += [p for p, _ in listed if p not in seen][: per_patient - len(paths)]
+            (d / "manifest.json").write_text(json.dumps(sorted(os.path.basename(p) for p in paths)))
+        else:
+            paths = [p for p, _ in listed][:per_patient]
         n = 0
         def _one(p: str) -> int:
             out = d / "dose" / os.path.basename(p)

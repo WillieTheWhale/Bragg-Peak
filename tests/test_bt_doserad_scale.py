@@ -16,6 +16,7 @@ from scripts.train_doserad_gpu import (
     doserad_relative_loss,
     initialize_lazy_modules,
     load_checkpoint,
+    resolve_resume_path,
     save_checkpoint,
     train_step,
 )
@@ -122,6 +123,24 @@ def test_resume_from_checkpoint_restores_state(tmp_path: Path) -> None:
     assert scheduler.state_dict() == saved_scheduler
     for name, tensor in model.state_dict().items():
         assert torch.allclose(tensor, saved_model[name])
+
+
+def test_resolve_resume_latest_downloads_latest_and_best_from_gcs(tmp_path: Path, monkeypatch) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(cmd: list[str], check: bool, text: bool, capture_output: bool):
+        calls.append(cmd)
+        Path(cmd[-1]).write_bytes(b"checkpoint")
+        return argparse.Namespace(returncode=0, stderr="")
+
+    monkeypatch.setattr("scripts.train_doserad_gpu.subprocess.run", fake_run)
+
+    path = resolve_resume_path("latest", tmp_path, "gs://bucket/runs/run18")
+
+    assert path == tmp_path / "latest.pt"
+    assert (tmp_path / "latest.pt").read_bytes() == b"checkpoint"
+    assert (tmp_path / "best.pt").read_bytes() == b"checkpoint"
+    assert [cmd[2] for cmd in calls] == ["gs://bucket/runs/run18/latest.pt", "gs://bucket/runs/run18/best.pt"]
 
 
 def _write_patient(root: Path, patient_id: str, *, scales: tuple[float, ...]) -> None:

@@ -342,8 +342,15 @@ def make_doserad_loaders(
     num_workers: int = 0,
     max_beamlets_per_patient: int | None = None,
     split_by: str = "patient",
-) -> tuple[DataLoader, DataLoader]:
-    """Build cached DoseRAD beamlet dataset and split train/val deterministically."""
+    test_frac: float = 0.0,
+) -> tuple[DataLoader, DataLoader] | tuple[DataLoader, DataLoader, DataLoader]:
+    """Build cached DoseRAD beamlet dataset and split deterministically.
+
+    With ``test_frac > 0`` (patient mode only) returns ``(train, val, test)``:
+    the TEST patients are the FIRST slice of the seeded shuffle — the same
+    patients earlier two-way runs used as val — and must only be evaluated
+    once, on the final frozen checkpoint. Checkpoint selection uses val.
+    """
 
     dataset = DoseRADBeamletDataset(
         root,
@@ -357,19 +364,55 @@ def make_doserad_loaders(
         rebuild_cache=rebuild_cache,
         max_beamlets_per_patient=max_beamlets_per_patient,
     )
-    train_ds, val_ds, actual_split, val_patient_ids, train_patient_ids, fallback = _split_doserad_dataset(
-        dataset,
-        val_frac=float(val_frac),
-        seed=int(seed),
-        split_by=str(split_by),
-    )
+    want_test = float(test_frac) > 0.0
+    if want_test and str(split_by).lower() != "patient":
+        raise ValueError("test_frac > 0 requires split_by='patient'.")
+    test_indices: list[int] = []
+    test_patient_ids: list[str] = []
+    if want_test:
+        patient_ids = _unique_record_patients(dataset)
+        if len(patient_ids) < 3:
+            raise ValueError("test_frac > 0 needs at least 3 patients (train/val/test).")
+        shuffled = list(patient_ids)
+        rng = np.random.default_rng(int(seed))
+        rng.shuffle(shuffled)
+        n_test = max(1, int(math.ceil(float(test_frac) * len(shuffled))))
+        if n_test >= len(shuffled) - 1:
+            n_test = len(shuffled) - 2
+        test_patient_ids = list(shuffled[:n_test])
+        test_set = set(test_patient_ids)
+        test_indices = [i for i, rec in enumerate(dataset.records) if rec.patient in test_set]
+        remaining = [i for i, rec in enumerate(dataset.records) if rec.patient not in test_set]
+        remaining_patients = [p for p in shuffled if p not in test_set]
+        n_val = max(1, int(math.ceil(float(val_frac) * len(patient_ids))))
+        if n_val >= len(remaining_patients):
+            n_val = len(remaining_patients) - 1
+        val_patient_ids = list(remaining_patients[:n_val])
+        val_set = set(val_patient_ids)
+        train_indices = [i for i in remaining if dataset.records[i].patient not in val_set]
+        val_indices = [i for i in remaining if dataset.records[i].patient in val_set]
+        train_ds, val_ds = Subset(dataset, train_indices), Subset(dataset, val_indices)
+        actual_split = "patient"
+        train_patient_ids = [p for p in remaining_patients if p not in val_set]
+        fallback = False
+    else:
+        train_ds, val_ds, actual_split, val_patient_ids, train_patient_ids, fallback = _split_doserad_dataset(
+            dataset,
+            val_frac=float(val_frac),
+            seed=int(seed),
+            split_by=str(split_by),
+        )
     if fallback:
         print(
             "warning: split_by=patient requested but only one patient is available; "
             "falling back to beamlet split, validation metrics are optimistic.",
             flush=True,
         )
-    print(f"DoseRAD split_by={actual_split} val_patients={json.dumps(val_patient_ids)}", flush=True)
+    print(
+        f"DoseRAD split_by={actual_split} val_patients={json.dumps(val_patient_ids)}"
+        + (f" test_patients={json.dumps(test_patient_ids)}" if want_test else ""),
+        flush=True,
+    )
     gen = torch.Generator().manual_seed(int(seed))
     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, generator=gen, num_workers=num_workers)
     val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False, num_workers=num_workers)
@@ -380,6 +423,11 @@ def make_doserad_loaders(
         val_patient_ids=val_patient_ids,
         train_patient_ids=train_patient_ids,
     )
+    if want_test:
+        test_loader = DataLoader(Subset(dataset, test_indices), batch_size=batch_size, shuffle=False, num_workers=num_workers)
+        test_loader.split_by = actual_split
+        test_loader.test_patient_ids = list(test_patient_ids)
+        return train_loader, val_loader, test_loader
     return train_loader, val_loader
 
 
@@ -576,6 +624,66 @@ def gamma_index_3d(
         if float(np.sqrt(np.min(dist_term + dose_term))) <= 1.0:
             passed += 1
     return float(100.0 * passed / len(points))
+
+
+def gamma_index_3d_fast(
+    pred: NDArray[np.float64],
+    ref: NDArray[np.float64],
+    spacing_mm: Iterable[float],
+    *,
+    dose_pct: float = 3.0,
+    dta_mm: float = 3.0,
+    low_dose_threshold: float = 0.1,
+    max_radius_voxels: int = 8,
+) -> float:
+    """Vectorized voxel-center gamma pass rate; pass/fail-identical to
+    :func:`gamma_index_3d` (with the same radius cap as the bounded variant)
+    but iterates over the offset window instead of over reference points, so
+    low cutoffs (e.g. the papers' 0.1%) stay cheap on large grids."""
+
+    pred_arr = np.asarray(pred, dtype=np.float64)
+    ref_arr = np.asarray(ref, dtype=np.float64)
+    if pred_arr.shape != ref_arr.shape or pred_arr.ndim != 3:
+        raise ValueError("pred and ref must be 3-D arrays with identical shape.")
+    spacing = np.asarray(tuple(spacing_mm), dtype=np.float64)
+    if spacing.shape != (3,) or np.any(~np.isfinite(spacing)) or np.any(spacing <= 0.0):
+        raise ValueError("spacing_mm must contain positive (depth,y,x) spacings.")
+
+    peak = float(np.max(ref_arr))
+    if not np.isfinite(peak) or peak <= 0.0:
+        return float("nan")
+    dose_norm = (float(dose_pct) / 100.0) * peak
+    mask = ref_arr >= float(low_dose_threshold) * peak
+    n_points = int(mask.sum())
+    if n_points == 0:
+        return float("nan")
+
+    radii = np.minimum(np.ceil(float(dta_mm) / spacing).astype(int), int(max_radius_voxels))
+    nz, ny, nx = ref_arr.shape
+    best = np.full(ref_arr.shape, np.inf, dtype=np.float64)
+    for dz in range(-int(radii[0]), int(radii[0]) + 1):
+        dist_z = (dz * spacing[0] / dta_mm) ** 2
+        if dist_z > 1.0:
+            continue
+        cz = slice(max(0, -dz), min(nz, nz - dz))
+        pz = slice(cz.start + dz, cz.stop + dz)
+        for dy in range(-int(radii[1]), int(radii[1]) + 1):
+            dist_zy = dist_z + (dy * spacing[1] / dta_mm) ** 2
+            if dist_zy > 1.0:
+                continue
+            cy = slice(max(0, -dy), min(ny, ny - dy))
+            py = slice(cy.start + dy, cy.stop + dy)
+            for dx in range(-int(radii[2]), int(radii[2]) + 1):
+                dist = dist_zy + (dx * spacing[2] / dta_mm) ** 2
+                if dist > 1.0:
+                    continue
+                cx = slice(max(0, -dx), min(nx, nx - dx))
+                px = slice(cx.start + dx, cx.stop + dx)
+                dose_term = ((pred_arr[pz, py, px] - ref_arr[cz, cy, cx]) / dose_norm) ** 2
+                region = best[cz, cy, cx]
+                np.minimum(region, dose_term + dist, out=region)
+    passed = int((best[mask] <= 1.0).sum())
+    return float(100.0 * passed / n_points)
 
 
 def depth_profile(dose: NDArray[np.float64]) -> NDArray[np.float64]:

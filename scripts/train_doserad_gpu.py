@@ -26,10 +26,23 @@ from braggtransporter.data.doserad import (
     depth_profile,
     download_patients,
     gamma_index_3d,
+    gamma_index_3d_fast,
     make_doserad_loaders,
     r80_mm_from_profile,
     rmse_pct_3d,
 )
+
+# (metric_key, dose_pct, dta_mm, low_dose_threshold)
+SUBSAMPLE_CRITERIA: list[tuple[str, float, float, float]] = [
+    ("gamma3d_3pct_3mm", 3.0, 3.0, 0.1),
+]
+# Full/final evals also report the papers' beamlet criterion (DoTA/ADoTA:
+# 1%/3mm with a 0.1% low-dose cutoff) and the plan-level 2%/2mm/10%.
+FULL_CRITERIA: list[tuple[str, float, float, float]] = [
+    ("gamma3d_3pct_3mm", 3.0, 3.0, 0.1),
+    ("gamma3d_1pct_3mm_dota", 1.0, 3.0, 0.001),
+    ("gamma3d_2pct_2mm", 2.0, 2.0, 0.1),
+]
 from braggtransporter.models.bragg3d import Bragg3D
 from braggtransporter.models.dota3d import DoTA3D
 from braggtransporter.models.dota3d_spatial import DoTA3DSpatial
@@ -54,6 +67,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--device", default="cuda", choices=["auto", "cuda", "mps", "cpu"])
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--val-frac", type=float, default=0.15)
+    parser.add_argument(
+        "--test-frac",
+        type=float,
+        default=0.0,
+        help="Fraction of patients held out as an UNTOUCHED test cohort (patient split only); "
+        "evaluated once on the final best checkpoint, never used for selection.",
+    )
     parser.add_argument("--depth-size", type=int, default=64)
     parser.add_argument("--depth-extent-mm", type=float, default=400.0)
     parser.add_argument("--lateral-size", type=int, default=24)
@@ -113,7 +133,7 @@ def train(args: argparse.Namespace) -> dict[str, float]:
         print(f"download_summary={json.dumps(summary, sort_keys=True)}", flush=True)
 
     report_grid_resolution(args)
-    train_loader, val_loader, source = build_loaders(args)
+    train_loader, val_loader, test_loader, source = build_loaders(args)
     val_sub_loader = make_eval_subsample_loader(val_loader, args)
     model = build_model(args).to(device)
     initialize_lazy_modules(model, train_loader, device)
@@ -183,7 +203,7 @@ def train(args: argparse.Namespace) -> dict[str, float]:
         full_eval_seconds = float("nan")
         if should_run_full_eval(epoch, args):
             full_t0 = time.perf_counter()
-            full_metrics = evaluate(model, val_loader, device)
+            full_metrics = evaluate(model, val_loader, device, criteria=FULL_CRITERIA)
             full_eval_seconds = time.perf_counter() - full_t0
             add_full_metric_aliases(latest_metrics, full_metrics)
             latest_metrics["eval_full_seconds"] = float(full_eval_seconds)
@@ -230,6 +250,21 @@ def train(args: argparse.Namespace) -> dict[str, float]:
             f"rmse(full)={best_full_metrics['best_rmse_pct_full']:.2f}%",
             flush=True,
         )
+        if test_loader is not None:
+            test_metrics = evaluate(model, test_loader, device, criteria=FULL_CRITERIA)
+            headline = {f"test_{k}": float(v) for k, v in test_metrics.items()}
+            latest_metrics.update(headline)
+            (out_dir / "metrics_test.json").write_text(json.dumps(json_clean(headline), indent=2), encoding="utf-8")
+            upload_to_gcs([out_dir / "metrics_test.json", out_dir / "metrics_best_full.json"], getattr(args, "gcs", None))
+            print(
+                "HEADLINE (untouched test patients, best checkpoint): "
+                f"gamma 1%/3mm/0.1%cut={test_metrics['gamma3d_1pct_3mm_dota']:.2f}% "
+                f"gamma 2%/2mm/10%cut={test_metrics['gamma3d_2pct_2mm']:.2f}% "
+                f"gamma 3%/3mm/10%cut={test_metrics['gamma3d_3pct_3mm']:.2f}% "
+                f"rmse={test_metrics['rmse_pct']:.2f}% r80err={test_metrics['r80_error_mm']:.2f}mm "
+                f"n={int(test_metrics['n_val_beamlets'])}",
+                flush=True,
+            )
     return latest_metrics
 
 
@@ -434,7 +469,7 @@ def build_model(args: argparse.Namespace) -> Bragg3D | DoTA3D | DoTA3DSpatial:
     return model_cls(**kwargs)
 
 
-def build_loaders(args: argparse.Namespace) -> tuple[DataLoader, DataLoader, str]:
+def build_loaders(args: argparse.Namespace) -> tuple[DataLoader, DataLoader, DataLoader | None, str]:
     workers = loader_worker_count(args)
     try:
         loaders = make_doserad_loaders(
@@ -451,6 +486,7 @@ def build_loaders(args: argparse.Namespace) -> tuple[DataLoader, DataLoader, str
             rebuild_cache=bool(args.rebuild_cache),
             num_workers=0,
             split_by=str(args.split_by),
+            test_frac=float(args.test_frac),
         )
         train_loader = clone_loader(
             loaders[0].dataset,
@@ -460,7 +496,8 @@ def build_loaders(args: argparse.Namespace) -> tuple[DataLoader, DataLoader, str
             workers=workers,
         )
         val_loader = clone_loader(loaders[1].dataset, args, shuffle=False, workers=workers)
-        return train_loader, val_loader, "doserad"
+        test_loader = clone_loader(loaders[2].dataset, args, shuffle=False, workers=workers) if len(loaders) > 2 else None
+        return train_loader, val_loader, test_loader, "doserad"
     except Exception as exc:
         if not args.fast:
             raise
@@ -480,7 +517,7 @@ def build_loaders(args: argparse.Namespace) -> tuple[DataLoader, DataLoader, str
             workers=workers,
         )
         val_loader = clone_loader(val_ds, args, shuffle=False, workers=workers)
-        return train_loader, val_loader, "synthetic"
+        return train_loader, val_loader, None, "synthetic"
 
 
 def split_generic_dataset(
@@ -669,10 +706,17 @@ def distal_slice_weights(target: torch.Tensor) -> torch.Tensor:
 
 
 @torch.no_grad()
-def evaluate(model: Bragg3D, loader: DataLoader, device: torch.device) -> dict[str, float]:
+def evaluate(
+    model: Bragg3D,
+    loader: DataLoader,
+    device: torch.device,
+    *,
+    criteria: list[tuple[str, float, float, float]] | None = None,
+) -> dict[str, float]:
     model.eval()
+    crit = list(criteria) if criteria is not None else list(SUBSAMPLE_CRITERIA)
     losses: list[float] = []
-    gamma_values: list[float] = []
+    gamma_values: dict[str, list[float]] = {key: [] for key, *_ in crit}
     rmse_values: list[float] = []
     r80_errors: list[float] = []
     n_seen = 0
@@ -687,22 +731,27 @@ def evaluate(model: Bragg3D, loader: DataLoader, device: torch.device) -> dict[s
         spacing = batch["spacing_mm"].numpy()
         for i in range(ref.shape[0]):
             n_seen += 1
-            gamma = safe_gamma_index_3d(pred[i], ref[i], spacing[i], dose_pct=3.0, dta_mm=3.0)
-            if np.isfinite(gamma):
-                gamma_values.append(gamma)
+            for key, dose_pct, dta_mm, low_cut in crit:
+                gamma = safe_gamma_index_3d(
+                    pred[i], ref[i], spacing[i], dose_pct=dose_pct, dta_mm=dta_mm, low_dose_threshold=low_cut
+                )
+                if np.isfinite(gamma):
+                    gamma_values[key].append(gamma)
             rmse_values.append(rmse_pct_3d(pred[i], ref[i], low_dose_threshold=0.02))
             pred_r80 = r80_mm_from_profile(depth_profile(pred[i]), float(spacing[i][0]))
             ref_r80 = r80_mm_from_profile(depth_profile(ref[i]), float(spacing[i][0]))
             if np.isfinite(pred_r80) and np.isfinite(ref_r80):
                 r80_errors.append(abs(pred_r80 - ref_r80))
-    return {
+    metrics = {
         "val_loss": nanmean(losses),
-        "gamma3d_3pct_3mm": nanmean(gamma_values),
         "rmse_pct": nanmean(rmse_values),
         "r80_error_mm": nanmean(r80_errors),
         "n_val_beamlets": float(n_seen),
-        "n_gamma_beamlets": float(len(gamma_values)),
+        "n_gamma_beamlets": float(len(gamma_values[crit[0][0]])),
     }
+    for key, *_ in crit:
+        metrics[key] = nanmean(gamma_values[key])
+    return metrics
 
 
 def safe_gamma_index_3d(
@@ -723,18 +772,15 @@ def safe_gamma_index_3d(
     spacing = np.asarray(tuple(spacing_mm), dtype=np.float64)
     if spacing.shape != (3,) or np.any(~np.isfinite(spacing)) or np.any(spacing <= 0.0):
         return float("nan")
-    radii = np.ceil(float(dta_mm) / spacing).astype(int)
-    if np.any(radii > int(max_radius_voxels)):
-        return bounded_gamma_index_3d(
-            pred,
-            ref_arr,
-            spacing,
-            dose_pct=dose_pct,
-            dta_mm=dta_mm,
-            low_dose_threshold=low_dose_threshold,
-            max_radius_voxels=max_radius_voxels,
-        )
-    return gamma_index_3d(pred, ref_arr, spacing, dose_pct=dose_pct, dta_mm=dta_mm, low_dose_threshold=low_dose_threshold)
+    return gamma_index_3d_fast(
+        pred,
+        ref_arr,
+        spacing,
+        dose_pct=dose_pct,
+        dta_mm=dta_mm,
+        low_dose_threshold=low_dose_threshold,
+        max_radius_voxels=max_radius_voxels,
+    )
 
 
 def bounded_gamma_index_3d(
@@ -813,9 +859,9 @@ def evaluate_best_checkpoint_on_full_val(
         print(f"warning: unable to re-evaluate best checkpoint {best_path}: {exc}", flush=True)
         return {}
     t0 = time.perf_counter()
-    full_metrics = evaluate(model, val_loader, device)
+    full_metrics = evaluate(model, val_loader, device, criteria=FULL_CRITERIA)
     elapsed = time.perf_counter() - t0
-    return {
+    result = {
         "best_val_loss_full": float(full_metrics["val_loss"]),
         "best_gamma3d_3pct_3mm_full": float(full_metrics["gamma3d_3pct_3mm"]),
         "best_rmse_pct_full": float(full_metrics["rmse_pct"]),
@@ -824,6 +870,9 @@ def evaluate_best_checkpoint_on_full_val(
         "best_n_gamma_beamlets_full": float(full_metrics["n_gamma_beamlets"]),
         "best_full_eval_seconds": float(elapsed),
     }
+    for key, *_ in FULL_CRITERIA:
+        result[f"best_{key}_full"] = float(full_metrics[key])
+    return result
 
 
 def save_checkpoint(
@@ -882,14 +931,19 @@ def resolve_resume_path(resume: str, out_dir: Path, gcs: str | None) -> Path | N
     if latest.exists() or not gcs:
         return latest
     latest.parent.mkdir(parents=True, exist_ok=True)
-    cmd = ["gsutil", "cp", f"{gcs.rstrip('/')}/latest.pt", str(latest)]
+    copy_from_gcs(f"{gcs.rstrip('/')}/latest.pt", latest)
+    copy_from_gcs(f"{gcs.rstrip('/')}/best.pt", out_dir / "best.pt")
+    return latest
+
+
+def copy_from_gcs(source: str, dest: Path) -> bool:
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    cmd = ["gsutil", "cp", source, str(dest)]
     try:
         proc = subprocess.run(cmd, check=False, text=True, capture_output=True)
-        if proc.returncode == 0 and latest.exists():
-            return latest
+        return proc.returncode == 0 and dest.exists()
     except OSError:
-        pass
-    return latest
+        return False
 
 
 def upload_to_gcs(paths: list[Path], gcs: str | None) -> None:
