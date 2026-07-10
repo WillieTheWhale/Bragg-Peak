@@ -10,6 +10,7 @@ import SimpleITK as sitk
 import torch
 from torch.utils.data import DataLoader
 
+import scripts.train_doserad_gpu as train_module
 from braggtransporter.data.doserad import DoseRADBeamletDataset
 from braggtransporter.models.bragg3d import Bragg3D
 from scripts.train_doserad_gpu import (
@@ -21,6 +22,7 @@ from scripts.train_doserad_gpu import (
     restore_rng_state,
     save_checkpoint,
     train_step,
+    write_metrics_json,
 )
 
 
@@ -164,6 +166,17 @@ def test_restore_rng_state_accepts_legacy_list_torch_state() -> None:
     restore_rng_state(state)
 
     assert torch.allclose(torch.rand(4), expected)
+
+
+def test_write_metrics_json_always_uploads_final_artifact(tmp_path: Path, monkeypatch) -> None:
+    uploads: list[tuple[list[Path], str | None]] = []
+    monkeypatch.setattr(train_module, "upload_to_gcs", lambda paths, gcs: uploads.append((paths, gcs)))
+    path = tmp_path / "metrics_best_full.json"
+
+    write_metrics_json(path, {"gamma": 86.25, "missing": float("nan")}, "gs://bucket/runs/run19")
+
+    assert json.loads(path.read_text(encoding="utf-8")) == {"gamma": 86.25, "missing": None}
+    assert uploads == [([path], "gs://bucket/runs/run19")]
 
 
 def _write_patient(root: Path, patient_id: str, *, scales: tuple[float, ...]) -> None:

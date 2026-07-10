@@ -59,6 +59,8 @@ exit 0
     startup = (tmp_path / "captured-startup").read_text(encoding="utf-8")
     assert "for ARTIFACT in latest.pt best.pt metrics.jsonl metrics_latest.json; do" in startup
     assert 'gsutil -q cp "$RUN/$ARTIFACT" "/opt/bt/runs/test-run/$ARTIFACT"' in startup
+    assert "for ARTIFACT in metrics_best_full.json metrics_test.json; do" in startup
+    assert 'gsutil -q cp "/opt/bt/runs/test-run/$ARTIFACT" "$RUN/$ARTIFACT"' in startup
 
 
 def _write_executable(path: Path, content: str) -> None:

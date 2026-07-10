@@ -76,6 +76,9 @@ push() { gsutil -q cp "\$LOG" "\$RUN/startup.log" 2>/dev/null || true; }
 finish() {
   push
   gsutil -q cp /opt/bt/train.log "\$RUN/train.log" 2>/dev/null || true
+  for ARTIFACT in metrics_best_full.json metrics_test.json; do
+    gsutil -q cp "/opt/bt/runs/$RUN_NAME/\$ARTIFACT" "\$RUN/\$ARTIFACT" 2>/dev/null || true
+  done
   if [[ "\$TRAIN_STATUS" -eq 0 ]]; then
     echo "DONE \$(date -u +%FT%TZ)" | gsutil -q cp - "\$RUN/DONE" 2>/dev/null || true
   else

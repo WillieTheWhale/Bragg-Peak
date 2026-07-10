@@ -243,7 +243,7 @@ def train(args: argparse.Namespace) -> dict[str, float]:
     best_full_metrics = evaluate_best_checkpoint_on_full_val(out_dir, model, val_loader, device)
     if best_full_metrics:
         latest_metrics.update(best_full_metrics)
-        (out_dir / "metrics_best_full.json").write_text(json.dumps(json_clean(best_full_metrics), indent=2), encoding="utf-8")
+        write_metrics_json(out_dir / "metrics_best_full.json", best_full_metrics, getattr(args, "gcs", None))
         print(
             f"best checkpoint full eval: gamma(full)={best_full_metrics['best_gamma3d_3pct_3mm_full']:.2f}% "
             f"val_loss(full)={best_full_metrics['best_val_loss_full']:.6g} "
@@ -254,8 +254,7 @@ def train(args: argparse.Namespace) -> dict[str, float]:
             test_metrics = evaluate(model, test_loader, device, criteria=FULL_CRITERIA)
             headline = {f"test_{k}": float(v) for k, v in test_metrics.items()}
             latest_metrics.update(headline)
-            (out_dir / "metrics_test.json").write_text(json.dumps(json_clean(headline), indent=2), encoding="utf-8")
-            upload_to_gcs([out_dir / "metrics_test.json", out_dir / "metrics_best_full.json"], getattr(args, "gcs", None))
+            write_metrics_json(out_dir / "metrics_test.json", headline, getattr(args, "gcs", None))
             print(
                 "HEADLINE (untouched test patients, best checkpoint): "
                 f"gamma 1%/3mm/0.1%cut={test_metrics['gamma3d_1pct_3mm_dota']:.2f}% "
@@ -1052,6 +1051,11 @@ def json_clean(value: Any) -> Any:
     if isinstance(value, (list, tuple)):
         return [json_clean(v) for v in value]
     return value
+
+
+def write_metrics_json(path: Path, metrics: dict[str, float], gcs: str | None) -> None:
+    path.write_text(json.dumps(json_clean(metrics), indent=2), encoding="utf-8")
+    upload_to_gcs([path], gcs)
 
 
 class SyntheticDoseRADDataset(Dataset[dict[str, torch.Tensor | dict[str, Any]]]):
