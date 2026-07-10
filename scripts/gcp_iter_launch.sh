@@ -111,6 +111,11 @@ push
 
 echo "=== TRAIN \$(date -u +%FT%TZ) ==="
 PATS=\$(ls data/doserad2026 | grep 1ABB | tr '\n' ' ')
+if [[ -n "$RESUME_ARG" ]]; then
+  mkdir -p /opt/bt/runs/$RUN_NAME
+  gsutil -q cp "\$RUN/latest.pt" /opt/bt/runs/$RUN_NAME/latest.pt 2>/dev/null || true
+  gsutil -q cp "\$RUN/best.pt" /opt/bt/runs/$RUN_NAME/best.pt 2>/dev/null || true
+fi
 set -o pipefail
 .venv/bin/python -u scripts/train_doserad_gpu.py --patients \$PATS \
   --max-beamlets "\$PER_PATIENT" --device cuda \
