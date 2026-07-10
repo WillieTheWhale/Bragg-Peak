@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import random
 from pathlib import Path
 
 import numpy as np
@@ -16,6 +17,7 @@ from scripts.train_doserad_gpu import (
     doserad_relative_loss,
     initialize_lazy_modules,
     load_checkpoint,
+    restore_rng_state,
     save_checkpoint,
     train_step,
 )
@@ -122,6 +124,27 @@ def test_resume_from_checkpoint_restores_state(tmp_path: Path) -> None:
     assert scheduler.state_dict() == saved_scheduler
     for name, tensor in model.state_dict().items():
         assert torch.allclose(tensor, saved_model[name])
+
+
+def test_restore_rng_state_accepts_legacy_list_torch_state() -> None:
+    random.seed(19)
+    np.random.seed(19)
+    torch.manual_seed(19)
+    state = {
+        "python": random.getstate(),
+        "numpy": np.random.get_state(),
+        "torch": torch.get_rng_state().tolist(),
+    }
+
+    _ = random.random()
+    _ = np.random.random()
+    _ = torch.rand(3)
+
+    restore_rng_state(state)
+    expected = torch.rand(4)
+    restore_rng_state(state)
+
+    assert torch.allclose(torch.rand(4), expected)
 
 
 def _write_patient(root: Path, patient_id: str, *, scales: tuple[float, ...]) -> None:
