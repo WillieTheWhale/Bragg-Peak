@@ -52,7 +52,8 @@ fi
 
 RUN="$BUCKET/runs/$RUN_NAME"
 INSTANCE="bt-$RUN_NAME"
-STARTUP=$(mktemp /tmp/bt-startup-XXXX.sh)
+STARTUP=$(mktemp "${TMPDIR:-/tmp}/bt-startup.XXXXXX")
+trap 'rm -f "$STARTUP"' EXIT
 if [[ "$PROVISIONING_MODEL" == "SPOT" ]]; then
   COST_LABEL=spot
 else
