@@ -20,7 +20,19 @@ path="${1%XXXXXX}ABC123"
 printf '%s\n' "$path"
 """,
     )
-    _write_executable(bin_dir / "gcloud", "#!/bin/sh\nexit 0\n")
+    _write_executable(
+        bin_dir / "gcloud",
+        """#!/bin/sh
+for arg in "$@"; do
+  case "$arg" in
+    --metadata-from-file=startup-script=*)
+      cp "${arg#--metadata-from-file=startup-script=}" "$TMPDIR/captured-startup"
+      ;;
+  esac
+done
+exit 0
+""",
+    )
 
     repo_root = Path(__file__).resolve().parents[1]
     env = os.environ.copy()
@@ -33,6 +45,7 @@ printf '%s\n' "$path"
             "test-run",
             "--train-args",
             "--epochs 1",
+            "--resume",
         ],
         cwd=repo_root,
         env=env,
@@ -43,6 +56,9 @@ printf '%s\n' "$path"
 
     assert result.returncode == 0, result.stderr
     assert not (tmp_path / "bt-startup.ABC123").exists()
+    startup = (tmp_path / "captured-startup").read_text(encoding="utf-8")
+    assert "for ARTIFACT in latest.pt best.pt metrics.jsonl metrics_latest.json; do" in startup
+    assert 'gsutil -q cp "$RUN/$ARTIFACT" "/opt/bt/runs/test-run/$ARTIFACT"' in startup
 
 
 def _write_executable(path: Path, content: str) -> None:
