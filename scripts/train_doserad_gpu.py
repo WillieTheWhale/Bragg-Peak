@@ -1024,9 +1024,17 @@ def restore_rng_state(state: dict[str, Any] | None) -> None:
         return
     random.setstate(state["python"])
     np.random.set_state(state["numpy"])
-    torch.set_rng_state(state["torch"])
+    torch.set_rng_state(as_byte_tensor(state["torch"]))
     if torch.cuda.is_available() and "cuda" in state:
-        torch.cuda.set_rng_state_all(state["cuda"])
+        torch.cuda.set_rng_state_all([as_byte_tensor(s) for s in state["cuda"]])
+
+
+def as_byte_tensor(value: Any) -> torch.ByteTensor:
+    if isinstance(value, torch.Tensor):
+        return value.detach().cpu().to(dtype=torch.uint8)
+    if isinstance(value, np.ndarray):
+        return torch.as_tensor(value, dtype=torch.uint8)
+    return torch.tensor(value, dtype=torch.uint8)
 
 
 def nanmean(values: list[float]) -> float:

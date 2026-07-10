@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import random
 from pathlib import Path
 
 import numpy as np
@@ -17,6 +18,7 @@ from scripts.train_doserad_gpu import (
     initialize_lazy_modules,
     load_checkpoint,
     resolve_resume_path,
+    restore_rng_state,
     save_checkpoint,
     train_step,
 )
@@ -141,6 +143,27 @@ def test_resolve_resume_latest_downloads_latest_and_best_from_gcs(tmp_path: Path
     assert (tmp_path / "latest.pt").read_bytes() == b"checkpoint"
     assert (tmp_path / "best.pt").read_bytes() == b"checkpoint"
     assert [cmd[2] for cmd in calls] == ["gs://bucket/runs/run18/latest.pt", "gs://bucket/runs/run18/best.pt"]
+
+
+def test_restore_rng_state_accepts_legacy_list_torch_state() -> None:
+    random.seed(19)
+    np.random.seed(19)
+    torch.manual_seed(19)
+    state = {
+        "python": random.getstate(),
+        "numpy": np.random.get_state(),
+        "torch": torch.get_rng_state().tolist(),
+    }
+
+    _ = random.random()
+    _ = np.random.random()
+    _ = torch.rand(3)
+
+    restore_rng_state(state)
+    expected = torch.rand(4)
+    restore_rng_state(state)
+
+    assert torch.allclose(torch.rand(4), expected)
 
 
 def _write_patient(root: Path, patient_id: str, *, scales: tuple[float, ...]) -> None:

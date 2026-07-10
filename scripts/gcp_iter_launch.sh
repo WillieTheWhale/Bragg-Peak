@@ -80,7 +80,7 @@ finish() {
   else
     echo "FAILED status=\$TRAIN_STATUS \$(date -u +%FT%TZ)" | gsutil -q cp - "\$RUN/FAILED" 2>/dev/null || true
   fi
-  NAME=\$(hostname)
+  NAME=\$(curl -s -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/name || hostname -s)
   ZONE=\$(curl -s -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/zone | awk -F/ '{print \$NF}')
   gcloud compute instances delete "\$NAME" --zone="\$ZONE" --quiet || true
 }
