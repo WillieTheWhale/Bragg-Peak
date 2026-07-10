@@ -63,3 +63,43 @@ patients), paper-criteria reporting. Note: run19's 3%/3mm number is expected to
 DROP vs run18 even if the model improves — the eval now includes the harder
 omitted-angle beamlets and the honest protocol removes selection bias. The
 paper-comparable number is `test_gamma3d_1pct_3mm_dota`.
+
+## run18 final result (legacy protocol; not paper-comparable)
+
+Run18 completed 150 epochs on 2026-07-10 at source commit
+`900e31151d467ba1cd08745c90046e3448683db9`. The resumed run used the
+iteration-1 protocol: 12 patients, a lexicographic 500-beamlet prefix per
+patient, patient holdout with validation patients `1ABB041` and `1ABB020`,
+per-beamlet unit-max relative dose, a 201-bin/400mm depth axis (2.0mm voxel
+spacing), and a 24-bin/96mm lateral grid (4.174mm spacing).
+
+The gamma-selected checkpoint was epoch 138:
+
+- Internal 96-beamlet 3%/3mm/10%-cutoff gamma: 84.79%.
+- Full 1,000-beamlet 3%/3mm/10%-cutoff gamma: 86.24%.
+- Full RMSE: 2.26%; full mean R80 error: 1.10mm.
+- Full gamma progression: 80.56% (epoch 40), 84.66% (epoch 80),
+  83.13% (epoch 120), and 86.24% for the frozen best checkpoint.
+
+These results show that the 2.0mm depth grid removed a major accuracy cap, but
+they remain an internal diagnostic. Run18 did not use the all-angle stratified
+sample, an untouched test cohort, or DoTA's 1%/3mm/0.1%-cutoff criterion.
+No comparison with the paper's headline gamma should use 86.24%.
+
+The complete repaired artifact set is under
+`gs://braggtransporter-braggtransporter/runs/run18/`: 150-row CSV and JSONL,
+NPZ arrays, best-full JSON, metadata/audit JSON, checkpoints, and terminal logs.
+
+## run19 launch record
+
+Run19 launched on 2026-07-10 from `audit-iter2` commit
+`94c7dd4fe4790d54e1ab55015fb0670ac92e60de` on an on-demand L4
+(`g2-standard-12`, `us-central1-b`). It keeps run18's model, seed, physical
+grid, optimizer, and 150-epoch schedule, with these controlled protocol changes:
+
+- deterministic 500-beamlet patient manifests spanning all 36 beams
+  (13-14 samples per beam, verified for all 12 patients);
+- `--test-frac 0.15 --val-frac 0.08`, yielding 9 train, 1 validation, and 2
+  untouched test patients;
+- full/final reporting at 3%/3mm/10%, 2%/2mm/10%, and the DoTA beamlet
+  criterion of 1%/3mm with a 0.1% cutoff.
