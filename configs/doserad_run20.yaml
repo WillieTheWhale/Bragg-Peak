@@ -1,6 +1,6 @@
 experiment:
   name: run20
-  status: prepared_not_launched
+  status: ready_to_launch
   research_only: true
   objective: paper-algorithm gamma on a 2mm isotropic DoseRAD2026 BEV grid
 

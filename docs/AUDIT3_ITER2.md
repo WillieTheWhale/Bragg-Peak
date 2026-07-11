@@ -119,9 +119,10 @@ Commit `89c5a53` adds a final-only `--paper-gamma` path using PyMedPhys with
 global normalization, 1% dose difference, 3mm DTA, 0.1% reference cutoff and
 10x interpolation. It records this separately as
 `gamma3d_1pct_3mm_dota_pymedphys`; the existing key is retained and explicitly
-labeled voxel-center. Run19's VM is retained after epoch 150 for retrospective
-evaluation of its frozen checkpoint. Even that result remains a coarse-grid
-ablation, because its lateral target was resampled at 4.174mm.
+labeled voxel-center. Run19's VM was retained after epoch 150 for retrospective
+evaluation of its frozen checkpoint, then deleted after the artifacts were
+uploaded. Even that result remains a coarse-grid ablation, because its lateral
+target was resampled at 4.174mm.
 
 The original DoTA model also differs from both existing variants: two shared
 CNN downsamplings produce one flattened spatial token per depth slice, followed
@@ -139,3 +140,55 @@ average. The run20 candidate therefore keeps the 96mm field but resolves it as
 grid, preserving a bounded 576-dimensional flattened token and a 2.34M-parameter
 model. The crop measurement is preliminary because only one gantry angle is
 available in the local sample; the wide field is the conservative choice.
+
+## run19 final result
+
+Run19 completed all 150 epochs at 2026-07-11 04:32:19 UTC. Training is pinned
+to commit `94c7dd4fe4790d54e1ab55015fb0670ac92e60de`; the retrospective
+PyMedPhys evaluator is pinned to
+`197da53bbb98fd0967f0d8a4c7c4d68dbeae1af8`. The trajectory-selected frozen
+checkpoint is epoch 128 (global step 72,064), selected only on the 96-beamlet
+validation subset:
+
+- Internal validation 3%/3mm/10% voxel-center gamma: 85.30%.
+- Internal validation RMSE: 2.48%; mean R80 error: 1.12mm.
+- Full 500-beamlet validation PyMedPhys 1%/3mm/0.1% gamma: 98.56%.
+
+The one-time untouched-test evaluation on patients `1ABB041` and `1ABB020`
+(1,000 beamlets) is:
+
+- **PyMedPhys 1%/3mm/0.1% gamma: 98.99%.**
+- Voxel-center 1%/3mm/0.1% lower bound: 92.60%.
+- Voxel-center 3%/3mm/10% internal diagnostic: 88.41%.
+- Voxel-center 2%/2mm/10% diagnostic: 78.16%.
+- RMSE: 2.18%; mean R80 error: 0.83mm.
+
+The PyMedPhys result is 0.38 percentage points below DoTA's reported 99.37%
+mean and lies within its reported 1.17-point standard deviation. This is strong
+evidence that run19 reached paper-level beamlet gamma under the paper's
+algorithm, despite using only 4,500 training beamlets. It is not a strict DoTA
+reproduction claim: run19 has 4.174mm lateral sampling rather than 2mm
+isotropic sampling, uses DoseRAD/Geant4 rather than DoTA's MCsquare cohort, and
+uses a different architecture and training distribution.
+
+Cycle maxima were 81.06% (epoch 28), 84.28% (50), 84.65% (76), 84.53% (107),
+85.30% (128), and 84.25% (150, truncated cycle). Full-validation voxel-center
+DoTA gamma progressed from 88.13% (epoch 40) to 89.91% (80), then 88.79%
+(120); this confirms why frozen-checkpoint selection was required.
+
+The completed package under
+`gs://braggtransporter-braggtransporter/runs/run19/` contains the original and
+PyMedPhys final JSONs, 150-row canonical JSONL and CSV, deterministic NPZ,
+checkpoint/logs, and `run_audit_summary.json`. The packager verified epochs
+1-150, strictly increasing global steps, finite numeric metrics, and exact
+agreement between `best.pt` and the trajectory optimum. Best-checkpoint SHA-256
+is `52d70534b58e3cd0f959803b92e3ccde1347b1b439748ad60aff07f9b2a4093b`.
+
+## run20 decision
+
+Run20 remains justified as the controlled removal of run19's final comparison
+caveat: it uses 2mm isotropic `201x49x49` targets while keeping the 96mm field.
+The repaired published-topology model fits batch 8 on an L4 with 7.51GiB peak
+allocated memory (9.94GiB reserved) and a measured 1.21-second full-shape
+training step. The protocol is frozen in `configs/doserad_run20.yaml`; its
+headline remains the untouched-test PyMedPhys metric, not a training-time proxy.
