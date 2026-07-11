@@ -1,0 +1,154 @@
+experiment:
+  name: run20
+  status: prepared_not_launched
+  research_only: true
+  objective: paper-algorithm gamma on a 2mm isotropic DoseRAD2026 BEV grid
+
+source:
+  branch: audit-iter2
+  training_commit: set_at_launch_and_asserted_by_expect_sha
+
+dataset:
+  name: DoseRAD2026
+  task: proton_dose_from_ct
+  reference: Geant4 dose-to-medium
+  patients:
+    - 1ABB006
+    - 1ABB011
+    - 1ABB020
+    - 1ABB021
+    - 1ABB030
+    - 1ABB031
+    - 1ABB035
+    - 1ABB036
+    - 1ABB039
+    - 1ABB041
+    - 1ABB042
+    - 1ABB045
+  beamlet_selection:
+    method: deterministic_round_robin_by_beam
+    count_per_patient: 500
+    beams_per_patient: 36
+    count_per_beam: 13_or_14
+  split:
+    unit: patient
+    seed: 0
+    train_patients:
+      - 1ABB006
+      - 1ABB011
+      - 1ABB021
+      - 1ABB030
+      - 1ABB031
+      - 1ABB035
+      - 1ABB039
+      - 1ABB042
+      - 1ABB045
+    validation_patients:
+      - 1ABB036
+    untouched_test_patients:
+      - 1ABB041
+      - 1ABB020
+
+coordinates:
+  frame: beam_eye_view
+  depth_direction: ray_source_to_ray_target
+  depth_origin: CT_box_entrance_along_ray
+  axis_order: [depth, lateral_y, lateral_x]
+  depth:
+    bins: 201
+    center_extent_mm: 400.0
+    spacing_mm: 2.0
+  lateral_y:
+    bins: 49
+    center_extent_mm: 96.0
+    spacing_mm: 2.0
+  lateral_x:
+    bins: 49
+    center_extent_mm: 96.0
+    spacing_mm: 2.0
+
+inputs:
+  channels:
+    - {name: hu_scaled, definition: HU_divided_by_1000, units: dimensionless}
+    - {name: density, units: g_per_cm3}
+    - {name: relative_stopping_power, units: dimensionless}
+    - {name: cumulative_wepl_scaled, definition: WEPL_mm_divided_by_300mm, units: dimensionless}
+  scalar_fields: [energy_MeV, layer_index, sin_gantry, cos_gantry]
+  model_conditioning: energy_MeV_only
+
+target:
+  quantity: per_beamlet_relative_dose
+  source_quantity: Geant4_dose_to_medium
+  normalization: explicit_unit_max_per_beamlet
+  physical_scale_saved_in_cache: true
+
+model:
+  name: dota3d
+  topology: shared_2d_cnn_flattened_slice_token_causal_depth_transformer_cnn_decoder
+  encoder_channels: 4
+  token_dimension: 576
+  transformer_layers: 1
+  attention_heads: 16
+  feedforward_dimension: 576
+  dropout: 0.2
+  nonnegative_output: softplus
+  parameter_count: 2341193
+
+training:
+  rng_seed: 0
+  epochs: 84
+  batch_size: 8
+  optimizer: AdamW
+  learning_rate: 0.0003
+  weight_decay: 0.0001
+  gradient_clip_norm: 1.0
+  loss:
+    name: weighted_relative_mse
+    low_dose_voxel_weight_below_2pct: 0.1
+    distal_multiplier: 3.0
+  schedule:
+    name: dota
+    halve_every_epochs: 4
+    hard_restart_every_epochs: 28
+  checkpoint_selection: minimum_validation_loss
+
+evaluation:
+  per_epoch:
+    beamlets: 96
+    criterion: {dose_difference_percent: 3.0, distance_to_agreement_mm: 3.0, cutoff_fraction: 0.1}
+    engine: voxel_center_internal_diagnostic
+  full_validation_every_epochs: 28
+  final:
+    checkpoint: frozen_validation_selected_best
+    cohort: untouched_test_patients
+    beamlets: 1000
+    criteria:
+      - name: gamma3d_1pct_3mm_dota_pymedphys
+        dose_difference_percent: 1.0
+        distance_to_agreement_mm: 3.0
+        cutoff_fraction: 0.001
+        engine: PyMedPhys_global_gamma
+        interpolation_fraction: 10
+      - name: gamma3d_1pct_3mm_dota
+        dose_difference_percent: 1.0
+        distance_to_agreement_mm: 3.0
+        cutoff_fraction: 0.001
+        engine: voxel_center_lower_bound
+      - name: gamma3d_2pct_2mm
+        dose_difference_percent: 2.0
+        distance_to_agreement_mm: 2.0
+        cutoff_fraction: 0.1
+        engine: voxel_center_diagnostic
+      - name: gamma3d_3pct_3mm
+        dose_difference_percent: 3.0
+        distance_to_agreement_mm: 3.0
+        cutoff_fraction: 0.1
+        engine: voxel_center_internal_diagnostic
+
+cloud:
+  project: braggtransporter
+  gpu: NVIDIA_L4
+  machine_type: g2-standard-12
+  provisioning: on_demand
+  boot_disk_size_gb: 160
+  artifact_prefix: gs://braggtransporter-braggtransporter/runs/run20/
