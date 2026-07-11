@@ -19,6 +19,7 @@ RESUME_ARG=""
 PROVISIONING_MODEL=SPOT
 PATIENTS="1ABB006,1ABB011,1ABB020,1ABB021,1ABB030,1ABB031,1ABB035,1ABB036,1ABB039,1ABB041,1ABB042,1ABB045"
 PER_PATIENT=500
+BOOT_DISK_SIZE_GB=100
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -34,6 +35,7 @@ while [[ $# -gt 0 ]]; do
     --provisioning-model) PROVISIONING_MODEL="$2"; shift 2 ;;
     --patients) PATIENTS="$2"; shift 2 ;;
     --per-patient) PER_PATIENT="$2"; shift 2 ;;
+    --boot-disk-size-gb) BOOT_DISK_SIZE_GB="$2"; shift 2 ;;
     *) echo "unknown arg $1" >&2; exit 2 ;;
   esac
 done
@@ -144,7 +146,7 @@ for TRY_ZONE in $ZONES_TO_TRY; do
     --accelerator="$ACCEL" \
     --image-family=pytorch-2-9-cu129-ubuntu-2404-nvidia-580 \
     --image-project=deeplearning-platform-release \
-    --boot-disk-size=100GB \
+    --boot-disk-size="${BOOT_DISK_SIZE_GB}GB" \
     --boot-disk-type=pd-balanced \
     --metadata-from-file=startup-script="$STARTUP" \
     --scopes=https://www.googleapis.com/auth/cloud-platform \

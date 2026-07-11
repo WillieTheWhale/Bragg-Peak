@@ -23,6 +23,7 @@ printf '%s\n' "$path"
     _write_executable(
         bin_dir / "gcloud",
         """#!/bin/sh
+printf '%s\n' "$@" > "$TMPDIR/captured-gcloud-args"
 for arg in "$@"; do
   case "$arg" in
     --metadata-from-file=startup-script=*)
@@ -46,6 +47,8 @@ exit 0
             "--train-args",
             "--epochs 1",
             "--resume",
+            "--boot-disk-size-gb",
+            "160",
         ],
         cwd=repo_root,
         env=env,
@@ -62,6 +65,8 @@ exit 0
     assert "for ARTIFACT in metrics_best_full.json metrics_test.json; do" in startup
     assert "pymedphys numba" in startup
     assert 'gsutil -q cp "/opt/bt/runs/test-run/$ARTIFACT" "$RUN/$ARTIFACT"' in startup
+    gcloud_args = (tmp_path / "captured-gcloud-args").read_text(encoding="utf-8").splitlines()
+    assert "--boot-disk-size=160GB" in gcloud_args
 
 
 def _write_executable(path: Path, content: str) -> None:
