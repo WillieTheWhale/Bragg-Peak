@@ -102,7 +102,7 @@ fi
 python3 -m venv --system-site-packages .venv
 .venv/bin/python -m pip install -q --upgrade pip wheel setuptools
 .venv/bin/python -c "import torch;print('torch',torch.__version__,'cuda',torch.cuda.is_available())" || .venv/bin/python -m pip install -q torch
-.venv/bin/python -m pip install -q SimpleITK huggingface_hub numpy scipy h5py pyyaml einops google-cloud-storage
+.venv/bin/python -m pip install -q SimpleITK huggingface_hub numpy scipy h5py pyyaml einops google-cloud-storage pymedphys numba
 push
 
 ( while true; do sleep 180; push; done ) &

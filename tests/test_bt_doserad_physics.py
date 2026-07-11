@@ -150,6 +150,35 @@ def test_fast_gamma_matches_reference_pass_rate() -> None:
             assert fast == pytest.approx(slow), (spacing, dose_pct, dta, cut)
 
 
+def test_pymedphys_gamma_resolves_subvoxel_shift_missed_by_voxel_centers() -> None:
+    pytest.importorskip("pymedphys")
+    from braggtransporter.data.doserad import gamma_index_3d_fast, gamma_index_3d_pymedphys
+
+    shape = (24, 8, 8)
+    spacing = (2.0, 2.0, 2.0)
+    z, y, x = np.meshgrid(
+        *(np.arange(n, dtype=np.float64) * step for n, step in zip(shape, spacing)),
+        indexing="ij",
+    )
+    ref = np.exp(-0.5 * (((z - 26.0) / 6.0) ** 2 + ((y - 7.0) / 4.0) ** 2 + ((x - 7.0) / 4.0) ** 2))
+    shifted = np.exp(
+        -0.5 * (((z - 27.0) / 6.0) ** 2 + ((y - 7.0) / 4.0) ** 2 + ((x - 7.0) / 4.0) ** 2)
+    )
+
+    interpolated = gamma_index_3d_pymedphys(shifted, ref, spacing)
+    voxel_center = gamma_index_3d_fast(
+        shifted,
+        ref,
+        spacing,
+        dose_pct=1.0,
+        dta_mm=3.0,
+        low_dose_threshold=0.001,
+    )
+
+    assert interpolated > 99.0
+    assert interpolated - voxel_center > 30.0
+
+
 def test_stratified_selection_spans_all_beams() -> None:
     """Round-robin manifest must cover every beam/gantry angle; the old prefix
     covered 17/36 (the iteration-2 consensus finding)."""

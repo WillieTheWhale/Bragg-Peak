@@ -686,6 +686,68 @@ def gamma_index_3d_fast(
     return float(100.0 * passed / n_points)
 
 
+def gamma_index_3d_pymedphys(
+    pred: NDArray[np.float64],
+    ref: NDArray[np.float64],
+    spacing_mm: Iterable[float],
+    *,
+    dose_pct: float = 1.0,
+    dta_mm: float = 3.0,
+    low_dose_threshold: float = 0.001,
+) -> float:
+    """Return interpolated global gamma using DoTA's PyMedPhys procedure.
+
+    The DoTA beamlet headline uses global 1%/3mm gamma on a 2mm isotropic
+    grid, excluding reference voxels below 0.1% of the beamlet maximum. The
+    dependency is imported lazily so normal data loading does not require the
+    optional paper-reproduction environment.
+    """
+
+    try:
+        from pymedphys import gamma as pymedphys_gamma
+    except ImportError as exc:  # pragma: no cover - optional dependency guard
+        raise ImportError(
+            "PyMedPhys gamma requires the optional dependencies: pip install pymedphys numba"
+        ) from exc
+
+    pred_arr = np.asarray(pred, dtype=np.float64)
+    ref_arr = np.asarray(ref, dtype=np.float64)
+    if pred_arr.shape != ref_arr.shape or pred_arr.ndim != 3:
+        raise ValueError("pred and ref must be 3-D arrays with identical shape.")
+    spacing = np.asarray(tuple(spacing_mm), dtype=np.float64)
+    if spacing.shape != (3,) or np.any(~np.isfinite(spacing)) or np.any(spacing <= 0.0):
+        raise ValueError("spacing_mm must contain positive (depth,y,x) spacings.")
+
+    peak = float(np.max(ref_arr))
+    if not np.isfinite(peak) or peak <= 0.0:
+        return float("nan")
+    cutoff = float(low_dose_threshold) * peak
+    mask = ref_arr >= cutoff
+    n_points = int(mask.sum())
+    if n_points == 0:
+        return float("nan")
+
+    ref_eval = np.where(ref_arr >= cutoff, ref_arr, 0.0)
+    pred_eval = np.where(pred_arr >= cutoff, pred_arr, 0.0)
+    axes = tuple(np.arange(size, dtype=np.float64) * step for size, step in zip(ref_arr.shape, spacing))
+    gamma_values = pymedphys_gamma(
+        axes,
+        ref_eval,
+        axes,
+        pred_eval,
+        float(dose_pct),
+        float(dta_mm),
+        lower_percent_dose_cutoff=100.0 * float(low_dose_threshold),
+        interp_fraction=10,
+        max_gamma=2.0,
+        local_gamma=False,
+        global_normalisation=peak,
+        skip_once_passed=False,
+    )
+    passed = int(np.count_nonzero(np.asarray(gamma_values)[mask] <= 1.0))
+    return float(100.0 * passed / n_points)
+
+
 def depth_profile(dose: NDArray[np.float64]) -> NDArray[np.float64]:
     """Collapse a BEV dose cube to a depth-dose curve by lateral summation."""
 

@@ -27,6 +27,7 @@ from braggtransporter.data.doserad import (
     download_patients,
     gamma_index_3d,
     gamma_index_3d_fast,
+    gamma_index_3d_pymedphys,
     make_doserad_loaders,
     r80_mm_from_profile,
     rmse_pct_3d,
@@ -43,6 +44,7 @@ FULL_CRITERIA: list[tuple[str, float, float, float]] = [
     ("gamma3d_1pct_3mm_dota", 1.0, 3.0, 0.001),
     ("gamma3d_2pct_2mm", 2.0, 2.0, 0.1),
 ]
+PAPER_GAMMA_KEY = "gamma3d_1pct_3mm_dota_pymedphys"
 from braggtransporter.models.bragg3d import Bragg3D
 from braggtransporter.models.dota3d import DoTA3D
 from braggtransporter.models.dota3d_spatial import DoTA3DSpatial
@@ -63,6 +65,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--save-best-by", choices=["gamma", "val_loss"], default="gamma")
     parser.add_argument("--eval-subsample", type=int, default=96, help="Fixed held-out beamlets for per-epoch progress gamma.")
     parser.add_argument("--full-eval-every", type=int, default=0, help="Run full held-out gamma every N epochs; 0 means only at end.")
+    parser.add_argument(
+        "--paper-gamma",
+        action="store_true",
+        help="Run final 1%%/3mm/0.1%%-cutoff gamma with PyMedPhys interpolation (requires pymedphys + numba).",
+    )
     parser.add_argument("--model", default="bragg3d", choices=["bragg3d", "dota3d", "dota3d_spatial"])
     parser.add_argument("--device", default="cuda", choices=["auto", "cuda", "mps", "cpu"])
     parser.add_argument("--seed", type=int, default=0)
@@ -240,7 +247,14 @@ def train(args: argparse.Namespace) -> dict[str, float]:
             f"{' best_checkpoint_updated' if best_updated else ''}",
             flush=True,
         )
-    best_full_metrics = evaluate_best_checkpoint_on_full_val(out_dir, model, val_loader, device)
+    paper_gamma = bool(getattr(args, "paper_gamma", False))
+    best_full_metrics = evaluate_best_checkpoint_on_full_val(
+        out_dir,
+        model,
+        val_loader,
+        device,
+        paper_gamma=paper_gamma,
+    )
     if best_full_metrics:
         latest_metrics.update(best_full_metrics)
         write_metrics_json(out_dir / "metrics_best_full.json", best_full_metrics, getattr(args, "gcs", None))
@@ -251,13 +265,20 @@ def train(args: argparse.Namespace) -> dict[str, float]:
             flush=True,
         )
         if test_loader is not None:
-            test_metrics = evaluate(model, test_loader, device, criteria=FULL_CRITERIA)
+            test_metrics = evaluate(
+                model,
+                test_loader,
+                device,
+                criteria=FULL_CRITERIA,
+                paper_gamma=paper_gamma,
+            )
             headline = {f"test_{k}": float(v) for k, v in test_metrics.items()}
             latest_metrics.update(headline)
             write_metrics_json(out_dir / "metrics_test.json", headline, getattr(args, "gcs", None))
             print(
                 "HEADLINE (untouched test patients, best checkpoint): "
-                f"gamma 1%/3mm/0.1%cut={test_metrics['gamma3d_1pct_3mm_dota']:.2f}% "
+                f"gamma 1%/3mm/0.1%cut voxel-center={test_metrics['gamma3d_1pct_3mm_dota']:.2f}% "
+                f"pymedphys={format_optional_metric(test_metrics, PAPER_GAMMA_KEY)} "
                 f"gamma 2%/2mm/10%cut={test_metrics['gamma3d_2pct_2mm']:.2f}% "
                 f"gamma 3%/3mm/10%cut={test_metrics['gamma3d_3pct_3mm']:.2f}% "
                 f"rmse={test_metrics['rmse_pct']:.2f}% r80err={test_metrics['r80_error_mm']:.2f}mm "
@@ -645,6 +666,11 @@ def format_full_eval_seconds(seconds: float) -> str:
     return f" eval_full:{float(seconds):.2f}s"
 
 
+def format_optional_metric(metrics: dict[str, float], key: str) -> str:
+    value = float(metrics.get(key, float("nan")))
+    return f"{value:.2f}%" if np.isfinite(value) else "not-run"
+
+
 def train_step(
     model: Bragg3D,
     batch: dict[str, Any],
@@ -713,11 +739,13 @@ def evaluate(
     device: torch.device,
     *,
     criteria: list[tuple[str, float, float, float]] | None = None,
+    paper_gamma: bool = False,
 ) -> dict[str, float]:
     model.eval()
     crit = list(criteria) if criteria is not None else list(SUBSAMPLE_CRITERIA)
     losses: list[float] = []
     gamma_values: dict[str, list[float]] = {key: [] for key, *_ in crit}
+    paper_gamma_values: list[float] = []
     rmse_values: list[float] = []
     r80_errors: list[float] = []
     n_seen = 0
@@ -738,6 +766,10 @@ def evaluate(
                 )
                 if np.isfinite(gamma):
                     gamma_values[key].append(gamma)
+            if paper_gamma:
+                gamma = safe_gamma_index_3d_pymedphys(pred[i], ref[i], spacing[i])
+                if np.isfinite(gamma):
+                    paper_gamma_values.append(gamma)
             rmse_values.append(rmse_pct_3d(pred[i], ref[i], low_dose_threshold=0.02))
             pred_r80 = r80_mm_from_profile(depth_profile(pred[i]), float(spacing[i][0]))
             ref_r80 = r80_mm_from_profile(depth_profile(ref[i]), float(spacing[i][0]))
@@ -752,6 +784,9 @@ def evaluate(
     }
     for key, *_ in crit:
         metrics[key] = nanmean(gamma_values[key])
+    if paper_gamma:
+        metrics[PAPER_GAMMA_KEY] = nanmean(paper_gamma_values)
+        metrics["n_gamma_beamlets_pymedphys"] = float(len(paper_gamma_values))
     return metrics
 
 
@@ -781,6 +816,28 @@ def safe_gamma_index_3d(
         dta_mm=dta_mm,
         low_dose_threshold=low_dose_threshold,
         max_radius_voxels=max_radius_voxels,
+    )
+
+
+def safe_gamma_index_3d_pymedphys(
+    pred: np.ndarray,
+    ref: np.ndarray,
+    spacing_mm: np.ndarray,
+) -> float:
+    ref_arr = np.asarray(ref, dtype=np.float64)
+    peak = float(np.max(ref_arr)) if ref_arr.size else 0.0
+    if not np.isfinite(peak) or peak <= 1e-8:
+        return float("nan")
+    spacing = np.asarray(tuple(spacing_mm), dtype=np.float64)
+    if spacing.shape != (3,) or np.any(~np.isfinite(spacing)) or np.any(spacing <= 0.0):
+        return float("nan")
+    return gamma_index_3d_pymedphys(
+        pred,
+        ref_arr,
+        spacing,
+        dose_pct=1.0,
+        dta_mm=3.0,
+        low_dose_threshold=0.001,
     )
 
 
@@ -850,6 +907,8 @@ def evaluate_best_checkpoint_on_full_val(
     model: Bragg3D,
     val_loader: DataLoader,
     device: torch.device,
+    *,
+    paper_gamma: bool = False,
 ) -> dict[str, float]:
     best_path = out_dir / "best.pt"
     if not best_path.exists():
@@ -860,7 +919,13 @@ def evaluate_best_checkpoint_on_full_val(
         print(f"warning: unable to re-evaluate best checkpoint {best_path}: {exc}", flush=True)
         return {}
     t0 = time.perf_counter()
-    full_metrics = evaluate(model, val_loader, device, criteria=FULL_CRITERIA)
+    full_metrics = evaluate(
+        model,
+        val_loader,
+        device,
+        criteria=FULL_CRITERIA,
+        paper_gamma=paper_gamma,
+    )
     elapsed = time.perf_counter() - t0
     result = {
         "best_val_loss_full": float(full_metrics["val_loss"]),
@@ -873,6 +938,9 @@ def evaluate_best_checkpoint_on_full_val(
     }
     for key, *_ in FULL_CRITERIA:
         result[f"best_{key}_full"] = float(full_metrics[key])
+    if paper_gamma:
+        result[f"best_{PAPER_GAMMA_KEY}_full"] = float(full_metrics[PAPER_GAMMA_KEY])
+        result["best_n_gamma_beamlets_pymedphys_full"] = float(full_metrics["n_gamma_beamlets_pymedphys"])
     return result
 
 
