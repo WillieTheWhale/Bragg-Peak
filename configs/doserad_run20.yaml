@@ -1,12 +1,12 @@
 experiment:
   name: run20
-  status: ready_to_launch
+  status: launched
   research_only: true
   objective: paper-algorithm gamma on a 2mm isotropic DoseRAD2026 BEV grid
 
 source:
   branch: audit-iter2
-  training_commit: set_at_launch_and_asserted_by_expect_sha
+  training_commit: 2ccb3ec0bc9f187c6e6d00ced8979a176e99353f
 
 dataset:
   name: DoseRAD2026
@@ -149,6 +149,7 @@ cloud:
   project: braggtransporter
   gpu: NVIDIA_L4
   machine_type: g2-standard-12
+  zone: us-east4-a
   provisioning: on_demand
   boot_disk_size_gb: 160
   artifact_prefix: gs://braggtransporter-braggtransporter/runs/run20/

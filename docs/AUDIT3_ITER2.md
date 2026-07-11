@@ -192,3 +192,13 @@ The repaired published-topology model fits batch 8 on an L4 with 7.51GiB peak
 allocated memory (9.94GiB reserved) and a measured 1.21-second full-shape
 training step. The protocol is frozen in `configs/doserad_run20.yaml`; its
 headline remains the untouched-test PyMedPhys metric, not a training-time proxy.
+
+Run20 launched on 2026-07-11 from dedicated branch `run20-isotropic`, commit
+`2ccb3ec0bc9f187c6e6d00ced8979a176e99353f`. Central-US L4 capacity was
+exhausted, so the on-demand `g2-standard-12` was provisioned in `us-east4-a`
+with a 160GB boot disk. The VM asserted the source SHA, reported CUDA available,
+downloaded exactly 6,000 valid beamlets, and resolved the requested grid as
+2.000mm depth x 2.000mm lateral. Training uses 84 epochs (three complete DoTA
+LR cycles), batch 8, the 2.34M-parameter repaired causal model, validation-loss
+checkpoint selection, and final-only untouched-test PyMedPhys evaluation. GCS
+artifacts are under `gs://braggtransporter-braggtransporter/runs/run20/`.
