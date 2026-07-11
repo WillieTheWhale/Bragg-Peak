@@ -465,6 +465,8 @@ def build_model(args: argparse.Namespace) -> Bragg3D | DoTA3D | DoTA3DSpatial:
     }
     if str(args.model) == "dota3d_spatial":
         kwargs["patch_size"] = int(args.patch_size)
+    if str(args.model) == "dota3d":
+        kwargs["lateral_size"] = int(args.lateral_size)
     return model_cls(**kwargs)
 
 

@@ -9,7 +9,7 @@ from braggtransporter.models.dota3d import DoTA3D
 
 def test_dota3d_forward_shape_nonnegative_and_backward_finite() -> None:
     torch.manual_seed(21)
-    model = DoTA3D(d_model=32, n_layers=1, n_heads=4, d_ff=64, max_depth=32)
+    model = DoTA3D(d_model=32, n_layers=1, n_heads=4, d_ff=64, max_depth=32, lateral_size=16, dropout=0.0)
     x, scalars, target = _synthetic_batch()
 
     out = model(x, scalars)
@@ -31,7 +31,7 @@ def test_dota3d_forward_shape_nonnegative_and_backward_finite() -> None:
 
 def test_dota3d_two_step_loss_decrease_cpu() -> None:
     torch.manual_seed(22)
-    model = DoTA3D(d_model=32, n_layers=1, n_heads=4, d_ff=64, max_depth=32)
+    model = DoTA3D(d_model=32, n_layers=1, n_heads=4, d_ff=64, max_depth=32, lateral_size=16, dropout=0.0)
     x, scalars, target = _synthetic_batch()
     optimizer = torch.optim.AdamW(model.parameters(), lr=3e-3, weight_decay=0.0)
 
@@ -53,7 +53,15 @@ def test_dota3d_real_mps_backward_check_if_available() -> None:
 
     torch.manual_seed(23)
     device = torch.device("mps")
-    model = DoTA3D(d_model=24, n_layers=1, n_heads=4, d_ff=48, max_depth=12).to(device)
+    model = DoTA3D(
+        d_model=24,
+        n_layers=1,
+        n_heads=4,
+        d_ff=48,
+        max_depth=12,
+        lateral_size=8,
+        dropout=0.0,
+    ).to(device)
     x, scalars, target = _synthetic_batch(batch=1, depth=12, lateral=8)
     loss = F.mse_loss(
         model(x.to(device), scalars.to(device))["dose"],
@@ -105,3 +113,49 @@ def test_synthetic_batch_contract() -> None:
     assert x.shape == (2, DOSERAD_INPUT_CHANNELS, 32, 16, 16)
     assert scalars.shape == (2, 4)
     assert dose.shape == (2, 32, 16, 16)
+
+
+def test_dota3d_causal_depth_attention_blocks_future_tissue() -> None:
+    torch.manual_seed(24)
+    model = DoTA3D(
+        d_model=32,
+        n_layers=1,
+        n_heads=4,
+        d_ff=64,
+        max_depth=12,
+        lateral_size=8,
+        dropout=0.0,
+    ).eval()
+    x, scalars, _ = _synthetic_batch(batch=1, depth=12, lateral=8)
+    changed = x.clone()
+    changed[:, :, 7:] = torch.randn_like(changed[:, :, 7:])
+
+    with torch.no_grad():
+        before = model(x, scalars)["dose"]
+        after = model(changed, scalars)["dose"]
+
+    torch.testing.assert_close(before[:, :7], after[:, :7], rtol=0.0, atol=2e-6)
+
+
+def test_dota3d_preserves_lateral_position_in_slice_tokens() -> None:
+    torch.manual_seed(25)
+    model = DoTA3D(
+        d_model=48,
+        n_layers=1,
+        n_heads=4,
+        d_ff=48,
+        max_depth=4,
+        lateral_size=8,
+        dropout=0.0,
+    ).eval()
+    a = torch.zeros(1, DOSERAD_INPUT_CHANNELS, 4, 8, 8)
+    b = a.clone()
+    a[:, 0, 1, 1, 1] = 1.0
+    b[:, 0, 1, 6, 6] = 1.0
+    scalars = torch.tensor([[150.0, 0.0, 0.0, 1.0]])
+
+    with torch.no_grad():
+        out_a = model(a, scalars)["dose"]
+        out_b = model(b, scalars)["dose"]
+
+    assert not torch.allclose(out_a[:, 1], out_b[:, 1], rtol=1e-5, atol=1e-6)
