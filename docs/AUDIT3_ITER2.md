@@ -202,3 +202,6 @@ downloaded exactly 6,000 valid beamlets, and resolved the requested grid as
 LR cycles), batch 8, the 2.34M-parameter repaired causal model, validation-loss
 checkpoint selection, and final-only untouched-test PyMedPhys evaluation. GCS
 artifacts are under `gs://braggtransporter-braggtransporter/runs/run20/`.
+The first epoch completed in 193.00 seconds at global step 563 with 72.13%
+internal gamma; `latest.pt`, `best.pt`, and the first metrics row were verified
+in GCS while the VM remained healthy.
