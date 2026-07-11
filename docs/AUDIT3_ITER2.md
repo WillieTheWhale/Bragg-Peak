@@ -59,10 +59,11 @@ before training (a missing `--branch` would otherwise silently train `main`).
 ## run19 config delta vs run18
 Same model/schedule/grid (2.0mm depth × 201). New: stratified 500/patient manifest
 (all 36 beams), `--test-frac 0.15 --val-frac 0.08` (train 9 / val 1 / test 2
-patients), paper-criteria reporting. Note: run19's 3%/3mm number is expected to
+patients), paper-threshold reporting. Note: run19's 3%/3mm number is expected to
 DROP vs run18 even if the model improves — the eval now includes the harder
 omitted-angle beamlets and the honest protocol removes selection bias. The
-paper-comparable number is `test_gamma3d_1pct_3mm_dota`.
+threshold-matched diagnostic is `test_gamma3d_1pct_3mm_dota`; the exact
+PyMedPhys result added below is required before any paper comparison.
 
 ## run18 final result (legacy protocol; not paper-comparable)
 
@@ -103,3 +104,38 @@ grid, optimizer, and 150-epoch schedule, with these controlled protocol changes:
   untouched test patients;
 - full/final reporting at 3%/3mm/10%, 2%/2mm/10%, and the DoTA beamlet
   criterion of 1%/3mm with a 0.1% cutoff.
+
+## Paper reproduction audit and run20 preparation
+
+Inspection of the [published DoTA source](https://github.com/opaserr/dota) and
+paper established two remaining mismatches. DoTA evaluates interpolated global
+gamma with PyMedPhys on a 2mm isotropic `150x24x24` grid. Run19 uses this
+criterion's thresholds but a voxel-center search on a 2.0mm depth x 4.174mm
+lateral grid. The latter is a conservative internal diagnostic, not the paper's
+algorithm. A deterministic 1mm-shift regression measures 99.69% with PyMedPhys
+versus 65.52% with the voxel-center implementation on the same 2mm grid.
+
+Commit `89c5a53` adds a final-only `--paper-gamma` path using PyMedPhys with
+global normalization, 1% dose difference, 3mm DTA, 0.1% reference cutoff and
+10x interpolation. It records this separately as
+`gamma3d_1pct_3mm_dota_pymedphys`; the existing key is retained and explicitly
+labeled voxel-center. Run19's VM is retained after epoch 150 for retrospective
+evaluation of its frozen checkpoint. Even that result remains a coarse-grid
+ablation, because its lateral target was resampled at 4.174mm.
+
+The original DoTA model also differs from both existing variants: two shared
+CNN downsamplings produce one flattened spatial token per depth slice, followed
+by one causal depth-attention block and a symmetric CNN decoder. The old
+`dota3d` instead averaged each slice to one vector, destroying lateral position;
+`dota3d_spatial` preserves position but uses noncausal factorized depth/lateral
+attention. Commit `e9e854c` repairs `dota3d` to the published topology and adds
+causality and lateral-sensitivity regressions.
+
+A preliminary crop check over 60 locally available angle-0 beamlets from four
+patients shows that DoTA's 48mm field is too narrow for DoseRAD: it excludes
+1.51% of integrated dose and 17.10% of voxels above the 0.1% gamma cutoff on
+average. The run20 candidate therefore keeps the 96mm field but resolves it as
+49x49 at 2mm. Commit `ba1e971` supports a 4-channel final slice encoder on this
+grid, preserving a bounded 576-dimensional flattened token and a 2.34M-parameter
+model. The crop measurement is preliminary because only one gantry angle is
+available in the local sample; the wide field is the conservative choice.
