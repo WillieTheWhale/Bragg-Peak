@@ -159,3 +159,25 @@ def test_dota3d_preserves_lateral_position_in_slice_tokens() -> None:
         out_b = model(b, scalars)["dose"]
 
     assert not torch.allclose(out_a[:, 1], out_b[:, 1], rtol=1e-5, atol=1e-6)
+
+
+def test_dota3d_wide_two_mm_grid_uses_bounded_published_token_width() -> None:
+    model = DoTA3D(
+        d_model=576,
+        n_layers=1,
+        n_heads=16,
+        d_ff=576,
+        max_depth=4,
+        lateral_size=49,
+        encoder_channels=4,
+        dropout=0.0,
+    ).eval()
+    x = torch.zeros(1, DOSERAD_INPUT_CHANNELS, 4, 49, 49)
+    scalars = torch.tensor([[150.0, 0.0, 0.0, 1.0]])
+
+    with torch.no_grad():
+        dose = model(x, scalars)["dose"]
+
+    assert model.encoded_lateral_size**2 * model.encoder_channels == 576
+    assert dose.shape == (1, 4, 49, 49)
+    assert model.param_count() < 3_000_000

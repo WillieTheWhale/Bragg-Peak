@@ -101,6 +101,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--n-heads", type=int, default=4)
     parser.add_argument("--d-ff", type=int, default=128)
     parser.add_argument("--patch-size", type=int, default=4, help="Patch size for spatial DoTA models.")
+    parser.add_argument(
+        "--encoder-channels",
+        type=int,
+        default=12,
+        help="Final per-slice CNN channels for dota3d (paper: 12 at 24x24; use 4 at 49x49).",
+    )
     parser.add_argument("--gcs", default=None, help="Optional gs:// bucket/prefix for checkpoints and metrics.")
     parser.add_argument("--resume", nargs="?", const="latest", default=None, help="Resume from latest or a checkpoint path.")
     parser.add_argument("--download", action="store_true", help="Download selected patients before training.")
@@ -488,6 +494,7 @@ def build_model(args: argparse.Namespace) -> Bragg3D | DoTA3D | DoTA3DSpatial:
         kwargs["patch_size"] = int(args.patch_size)
     if str(args.model) == "dota3d":
         kwargs["lateral_size"] = int(args.lateral_size)
+        kwargs["encoder_channels"] = int(args.encoder_channels)
     return model_cls(**kwargs)
 
 

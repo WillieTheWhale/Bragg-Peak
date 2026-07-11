@@ -42,14 +42,17 @@ class DoTA3D(nn.Module):
             raise ValueError("max_depth must be >= 1.")
         if lateral_size < 4:
             raise ValueError("lateral_size must be >= 4.")
-        if encoder_channels < 4 or encoder_channels % 4 != 0:
-            raise ValueError("encoder_channels must be >= 4 and divisible by 4.")
+        if encoder_channels < 1:
+            raise ValueError("encoder_channels must be >= 1.")
 
         self.c_in = int(c_in)
         self.d_model = int(d_model)
         self.max_depth = int(max_depth)
         self.lateral_size = int(lateral_size)
         self.encoder_channels = int(encoder_channels)
+        self.encoder_groups = next(
+            groups for groups in range(min(4, self.encoder_channels), 0, -1) if self.encoder_channels % groups == 0
+        )
         self.encoded_lateral_size = self.lateral_size // 4
         flattened_dim = self.encoder_channels * self.encoded_lateral_size**2
 
@@ -74,7 +77,7 @@ class DoTA3D(nn.Module):
             nn.MaxPool2d(kernel_size=2, stride=2),
             nn.ReLU(),
             nn.Conv2d(64, self.encoder_channels, kernel_size=5, padding=2, bias=False),
-            nn.GroupNorm(4, self.encoder_channels),
+            nn.GroupNorm(self.encoder_groups, self.encoder_channels),
             nn.ReLU(),
             nn.Flatten(),
         )
